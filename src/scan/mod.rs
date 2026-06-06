@@ -13,6 +13,7 @@ mod handshake_sim;
 mod ocsp;
 mod pqc;
 mod vuln_heartbleed;
+mod dh_params;
 mod cert;
 mod cipher;
 mod extensions;
@@ -130,7 +131,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     }
 
     // Cipher / key exchange.
-    let key_exchange = if skip_cipher_enum {
+    let mut key_exchange = if skip_cipher_enum {
         cipher::KeyExchangeInfo::default()
     } else {
         cipher::inspect(target, timeout).await.unwrap_or_default()
@@ -180,6 +181,37 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
                 target,
                 "RSA key-exchange cipher accepted — potentially exposes Bleichenbacher RSA padding oracle. Full active probe in v0.3.x.",
             ));
+        }
+
+        // DHE detection — any TLS_DHE_RSA_* cipher enumerated triggers
+        // a follow-up DH param probe that extracts prime bits + a
+        // common-prime hash compare (Logjam).
+        let dhe_accepted = accepted_at_12.iter().any(|s| matches!(*s,
+            0x009e | 0x009f | 0x0033 | 0x0039 | 0x0067 | 0x006b));
+        if dhe_accepted {
+            let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+            let dh = dh_params::probe(target, host_str, timeout).await;
+            if let Some(bits) = dh.bits {
+                if bits < 2048 {
+                    findings.push(crate::finding::make(
+                        "TLS-DH-WEAK",
+                        target,
+                        format!("DHE parameter is only {bits} bits — Logjam-vulnerable. Recommend ≥2048."),
+                    ));
+                }
+                if dh.common_prime {
+                    findings.push(crate::finding::make(
+                        "TLS-DH-COMMON-PRIME",
+                        target,
+                        "DHE uses a publicly-known common prime — precomputation attack feasible.",
+                    ));
+                }
+                if let Some(hash) = &dh.prime_sha256 {
+                    key_exchange.dh_param_bits = Some(bits);
+                    key_exchange.common_prime_dh = dh.common_prime;
+                    tracing::info!(host = target, dh_bits = bits, prime_sha256 = %hash, "DHE params");
+                }
+            }
         }
 
         // BEAST eligibility — TLS 1.0 with any CBC cipher exposes the

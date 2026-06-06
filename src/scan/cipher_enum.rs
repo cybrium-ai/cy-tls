@@ -165,6 +165,13 @@ fn build_client_hello(sni: &str, major: u8, minor: u8, suites: &[u16]) -> Vec<u8
 /// want to flag as findings.
 pub fn name(id: u16) -> &'static str {
     match id {
+        // DHE-RSA
+        0x009e => "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
+        0x009f => "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384",
+        0x0033 => "TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
+        0x0039 => "TLS_DHE_RSA_WITH_AES_256_CBC_SHA",
+        0x0067 => "TLS_DHE_RSA_WITH_AES_128_CBC_SHA256",
+        0x006b => "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256",
         // TLS 1.3
         0x1301 => "TLS_AES_128_GCM_SHA256",
         0x1302 => "TLS_AES_256_GCM_SHA384",
@@ -209,6 +216,8 @@ pub const TLS12_SUITES: &[u16] = &[
     0xcca8, 0xcca9,                             // ChaCha20
     0xc023, 0xc024, 0xc027, 0xc028,             // ECDHE SHA-2 CBC
     0xc009, 0xc00a, 0xc013, 0xc014,             // ECDHE SHA-1 CBC
+    0x009e, 0x009f,                             // DHE-RSA AEAD (Logjam relevant)
+    0x0033, 0x0039, 0x0067, 0x006b,             // DHE-RSA CBC (Logjam relevant)
     0x009c, 0x009d,                             // RSA AEAD
     0x002f, 0x0035,                             // RSA CBC
     0x000a,                                     // 3DES (SWEET32)
