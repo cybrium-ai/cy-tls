@@ -181,6 +181,23 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
                 "RSA key-exchange cipher accepted — potentially exposes Bleichenbacher RSA padding oracle. Full active probe in v0.3.x.",
             ));
         }
+
+        // BEAST eligibility — TLS 1.0 with any CBC cipher exposes the
+        // record-layer chosen-plaintext attack (BEAST, CVE-2011-3389).
+        // Modern browsers mitigate client-side (1/n-1 split) but
+        // server-side mitigation is to not offer TLS 1.0 at all.
+        if protocols.tls10.supported {
+            let beast_cbc_cipher = accepted_at_12.iter().any(|s| matches!(*s,
+                0xc009 | 0xc00a | 0xc013 | 0xc014 | 0xc023 | 0xc024 | 0xc027 | 0xc028 |
+                0x002f | 0x0035));
+            if beast_cbc_cipher {
+                findings.push(crate::finding::make(
+                    "TLS-CBC-MAC-THEN-ENCRYPT",
+                    target,
+                    "TLS 1.0 + CBC cipher accepted — BEAST attack surface (mitigated client-side by modern browsers).",
+                ));
+            }
+        }
     }
 
     // Extensions: renegotiation, compression, heartbeat. Phase 2.
