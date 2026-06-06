@@ -27,6 +27,17 @@ pub struct ProtocolSupport {
     pub tls11:  VersionResult,
     pub tls12:  VersionResult,
     pub tls13:  Tls13Result,
+    /// Negotiated key exchange group (e.g. `X25519`, `secp256r1`).
+    /// TLS 1.3 always populates this; TLS 1.2 sometimes does.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_exchange_group: Option<String>,
+    /// True when the negotiated cipher provides forward secrecy
+    /// (ECDHE/DHE in TLS 1.2; always true in TLS 1.3).
+    pub forward_secrecy: bool,
+    /// Negotiated ALPN protocol (`h2`, `http/1.1`, etc.). None if the
+    /// server doesn't speak ALPN or didn't pick one of our offers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alpn: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -84,17 +95,20 @@ pub async fn enumerate(
     let hello_start = std::time::Instant::now();
 
     // Modern path via rustls — gets us TLS 1.2 and TLS 1.3 cleanly.
-    if let Ok((negotiated_version, suite)) = try_handshake(target, &host_str, deadline).await {
-        match negotiated_version {
+    if let Ok(h) = try_handshake(target, &host_str, deadline).await {
+        match h.version {
             NegotiatedVersion::Tls13 => {
                 report.tls13.supported = true;
-                report.tls13.ciphers.push(suite);
+                report.tls13.ciphers.push(h.cipher_suite);
             }
             NegotiatedVersion::Tls12 => {
                 report.tls12.supported = true;
-                report.tls12.ciphers.push(suite);
+                report.tls12.ciphers.push(h.cipher_suite);
             }
         }
+        report.forward_secrecy = h.forward_secrecy;
+        report.key_exchange_group = h.key_exchange_group;
+        report.alpn = h.alpn;
     }
 
     // Legacy versions via raw ClientHello. rustls 0.23 explicitly drops
@@ -116,16 +130,28 @@ enum NegotiatedVersion {
     Tls13,
 }
 
+/// Captured during the rustls handshake — exposes everything the API
+/// gives us beyond just the cipher name. Forward Secrecy is derived
+/// from the cipher's name (ECDHE / DHE = FS, anything else = no FS).
+pub struct HandshakeDetails {
+    pub version: NegotiatedVersion,
+    pub cipher_suite: String,
+    pub forward_secrecy: bool,
+    pub key_exchange_group: Option<String>,
+    pub alpn: Option<String>,
+}
+
 async fn try_handshake(
     target: &str,
     server_name: &str,
     deadline: Duration,
-) -> anyhow::Result<(NegotiatedVersion, String)> {
+) -> anyhow::Result<HandshakeDetails> {
     let mut root_store = RootCertStore::empty();
     root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config = ClientConfig::builder()
+    let mut config = ClientConfig::builder()
         .with_root_certificates(root_store)
         .with_no_client_auth();
+    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let connector = TlsConnector::from(Arc::new(config));
 
     let tcp = timeout(deadline, TcpStream::connect(target)).await??;
@@ -136,17 +162,31 @@ async fn try_handshake(
     let version = conn
         .protocol_version()
         .ok_or_else(|| anyhow::anyhow!("no protocol version negotiated"))?;
-    let suite = conn
+    let suite_name = conn
         .negotiated_cipher_suite()
         .map(|s| format!("{:?}", s.suite()))
         .unwrap_or_else(|| "unknown".to_string());
+    let forward_secrecy = suite_name.contains("ECDHE") || suite_name.contains("DHE")
+        || version == rustls::ProtocolVersion::TLSv1_3;
+    let key_exchange_group = conn
+        .negotiated_key_exchange_group()
+        .map(|g| format!("{:?}", g.name()));
+    let alpn = conn
+        .alpn_protocol()
+        .and_then(|b| std::str::from_utf8(b).ok().map(String::from));
 
-    let negotiated = match version {
+    let negotiated_version = match version {
         rustls::ProtocolVersion::TLSv1_3 => NegotiatedVersion::Tls13,
         rustls::ProtocolVersion::TLSv1_2 => NegotiatedVersion::Tls12,
         other => anyhow::bail!("unexpected protocol version: {other:?}"),
     };
-    Ok((negotiated, suite))
+    Ok(HandshakeDetails {
+        version: negotiated_version,
+        cipher_suite: suite_name,
+        forward_secrecy,
+        key_exchange_group,
+        alpn,
+    })
 }
 
 fn split_host_port(target: &str) -> anyhow::Result<(String, u16)> {

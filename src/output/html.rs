@@ -102,18 +102,29 @@ fn render_target(r: &ScanReport) -> String {
          <div class=\"meta\">\
             <span><strong>IP:</strong> {}</span>\
             <span><strong>Elapsed:</strong> {} ms</span>\
-            <span><strong>TLS 1.3:</strong> {}</span>\
-            <span><strong>TLS 1.2:</strong> {}</span>\
-            <span><strong>TLS 1.1:</strong> {}</span>\
-            <span><strong>TLS 1.0:</strong> {}</span>\
-         </div>",
+         </div>\
+         <h3>Configuration</h3>\
+         <dl class=\"cert\">\
+            <dt>TLS 1.3</dt><dd>{}{}</dd>\
+            <dt>TLS 1.2</dt><dd>{}{}</dd>\
+            <dt>TLS 1.1</dt><dd>{}</dd>\
+            <dt>TLS 1.0</dt><dd>{}</dd>\
+            <dt>ALPN</dt><dd>{}</dd>\
+            <dt>Key Exchange Group</dt><dd>{}</dd>\
+            <dt>Forward Secrecy</dt><dd>{}</dd>\
+         </dl>",
         esc(&r.target),
         esc(r.ip.as_deref().unwrap_or("—")),
         r.elapsed_ms,
-        check(r.protocols.tls13.supported),
-        check(r.protocols.tls12.supported),
-        check(r.protocols.tls11.supported),
-        check(r.protocols.tls10.supported),
+        yes_no(r.protocols.tls13.supported),
+        cipher_suffix(&r.protocols.tls13.ciphers),
+        yes_no(r.protocols.tls12.supported),
+        cipher_suffix(&r.protocols.tls12.ciphers),
+        yes_no(r.protocols.tls11.supported),
+        yes_no(r.protocols.tls10.supported),
+        esc(r.protocols.alpn.as_deref().unwrap_or("not negotiated")),
+        esc(r.protocols.key_exchange_group.as_deref().unwrap_or("—")),
+        yes_no(r.protocols.forward_secrecy),
     ));
 
     if let Some(c) = &r.certificate {
@@ -168,6 +179,22 @@ fn render_target(r: &ScanReport) -> String {
 }
 
 fn check(b: bool) -> &'static str { if b { "✓" } else { "✗" } }
+
+fn yes_no(b: bool) -> &'static str {
+    if b {
+        "<span class=\"yes\">Yes</span>"
+    } else {
+        "<span class=\"no\">No</span>"
+    }
+}
+
+fn cipher_suffix(ciphers: &[String]) -> String {
+    if ciphers.is_empty() {
+        String::new()
+    } else {
+        format!(" · <code>{}</code>", esc(&ciphers.join(", ")))
+    }
+}
 
 fn sev_order(s: &str) -> u8 {
     match s {
@@ -234,6 +261,8 @@ table.findings code { color: var(--fg-bright); font-family: ui-monospace, Menlo,
 .sev.medium   { background: rgba(234,179,8,0.18);  color: var(--medium); }
 .sev.low      { background: rgba(56,189,248,0.18); color: var(--low); }
 .sev.info     { background: rgba(148,163,184,0.18);color: var(--info); }
+.yes { color: #22c55e; font-weight: 600; }
+.no  { color: var(--high); font-weight: 600; }
 .ev   { color: var(--muted); max-width: 320px; }
 .ctrl { color: var(--muted); font-size: 11px; max-width: 280px; }
 footer { padding: 18px 28px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); text-align: center; font-family: ui-monospace, Menlo, monospace; }
