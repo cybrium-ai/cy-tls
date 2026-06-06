@@ -2,19 +2,20 @@ name: release
 
 # Mirrors the cyweb release pattern:
 #   - 5 platforms (linux x64 + arm64, darwin x64 + arm64, windows x64)
-#   - Raw binary uploads (no tar.gz wrapping) named cy-tls-<os>-<arch>[.exe]
+#   - Raw binary uploads named cy-tls-<os>-<arch>[.exe]
 #   - Apple code signing + notarization (when secrets present)
 #   - Azure Trusted Signing for Windows (when secrets present, via OIDC)
 #   - Auto-update Homebrew formula + Scoop manifest (when HOMEBREW_TAP_TOKEN present)
 #
-# Required secrets for full signing (copy from cybrium-ai/cyweb):
+# Required secrets for full signing (copy from cybrium-ai/cyweb via STDIN):
 #   APPLE_CERTIFICATE_BASE64   APPLE_CERTIFICATE_PASSWORD   APPLE_SIGNING_IDENTITY
 #   APPLE_ID                   APPLE_APP_PASSWORD           APPLE_TEAM_ID
 #   AZURE_CLIENT_ID            AZURE_TENANT_ID
 #   HOMEBREW_TAP_TOKEN
 #
-# Without those secrets the pipeline still produces unsigned binaries and
-# uploads them — only the signing + tap-update steps are skipped.
+# All signing + tap-update steps guard on $VAR being non-empty INSIDE the
+# shell, because `if:` is evaluated before the step's `env:` block expands
+# secrets — so `if: env.X != ''` does not work for secret presence checks.
 
 on:
   push:
@@ -80,13 +81,18 @@ jobs:
           fi
           ls -la dist
 
-      # ── Apple code signing (macOS builds only, when secrets present) ─
-      - name: Import Apple signing certificate
-        if: matrix.sign && env.APPLE_CERTIFICATE_BASE64 != ''
+      # ── Apple code signing — guarded in-shell on secret presence ────
+      - name: Import Apple signing certificate (if configured)
+        if: matrix.sign
         env:
           APPLE_CERTIFICATE_BASE64:   ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
         run: |
+          if [ -z "$APPLE_CERTIFICATE_BASE64" ]; then
+            echo "APPLE_CERTIFICATE_BASE64 not set — skipping cert import"
+            exit 0
+          fi
           CERT_PATH=$RUNNER_TEMP/cert.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
@@ -98,21 +104,61 @@ jobs:
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
-      - name: Sign macOS binary
-        if: matrix.sign && env.APPLE_SIGNING_IDENTITY != ''
+      - name: Sign macOS binary (if configured)
+        if: matrix.sign
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        shell: bash
         run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set — emitting unsigned binary"
+            exit 0
+          fi
           codesign --force --options runtime --timestamp \
             --sign "$APPLE_SIGNING_IDENTITY" \
             dist/${{ matrix.name }}
           codesign --verify --verbose=2 dist/${{ matrix.name }}
 
-      # ── Azure Trusted Signing (Windows, when secrets present) ───────
-      - name: Azure login (federated OIDC)
-        if: runner.os == 'Windows' && env.AZURE_CLIENT_ID != '' && startsWith(github.ref, 'refs/tags/v')
+      - name: Notarize macOS binary (if configured)
+        if: matrix.sign
+        env:
+          APPLE_ID:           ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID:      ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          if [ -z "$APPLE_ID" ]; then
+            echo "APPLE_ID not set — skipping notarization"
+            exit 0
+          fi
+          ditto -c -k --keepParent dist/${{ matrix.name }} /tmp/${{ matrix.name }}.zip
+          xcrun notarytool submit /tmp/${{ matrix.name }}.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id  "$APPLE_TEAM_ID" \
+            --wait
+
+      # ── Azure Trusted Signing for Windows ───────────────────────────
+      # azure/login DOES allow `if:` checks because we can route the
+      # client-id through a job-scope env to keep the if-expression honest.
+      # We use a separate guard step to short-circuit Windows signing when
+      # AZURE_CLIENT_ID is absent.
+      - name: Check Windows signing eligibility
+        id: winsign
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        shell: bash
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ]; then
+            echo "AZURE_CLIENT_ID not set — emitting unsigned Windows binary"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Azure login (federated OIDC)
+        if: steps.winsign.outputs.enabled == 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -120,9 +166,7 @@ jobs:
           allow-no-subscriptions: true
 
       - name: Sign Windows binary via Azure Trusted Signing
-        if: runner.os == 'Windows' && env.AZURE_CLIENT_ID != '' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        if: steps.winsign.outputs.enabled == 'true'
         uses: Azure/trusted-signing-action@v0.5
         with:
           azure-tenant-id:              ${{ secrets.AZURE_TENANT_ID }}
@@ -137,31 +181,13 @@ jobs:
           timestamp-digest:             SHA256
 
       - name: Verify Windows signature
-        if: runner.os == 'Windows' && env.AZURE_CLIENT_ID != '' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        if: steps.winsign.outputs.enabled == 'true'
         shell: pwsh
         run: |
           $sig = Get-AuthenticodeSignature dist/${{ matrix.name }}
           Write-Host "Status: $($sig.Status)"
           Write-Host "Signer: $($sig.SignerCertificate.Subject)"
           if ($sig.Status -ne 'Valid') { throw "Signature verification failed: $($sig.Status)" }
-
-      # ── Apple notarization (macOS only, when secrets present) ───────
-      - name: Notarize macOS binary
-        if: matrix.sign && env.APPLE_ID != ''
-        env:
-          APPLE_ID:           ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID:      ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          ditto -c -k --keepParent dist/${{ matrix.name }} /tmp/${{ matrix.name }}.zip
-          xcrun notarytool submit /tmp/${{ matrix.name }}.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id  "$APPLE_TEAM_ID" \
-            --wait
-          echo "Notarization complete for ${{ matrix.name }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -179,34 +205,29 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Compute SHA256s
-        id: sha
-        shell: bash
-        run: |
-          cd dist
-          for f in *; do
-            sha=$(sha256sum "$f" | awk '{print $1}')
-            echo "${f//[.-]/_}=$sha" >> "$GITHUB_OUTPUT"
-            echo "  $f → $sha"
-          done
-
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
 
-      # ── Update Homebrew formula on cybrium-ai/homebrew-cli ──────────
-      - name: Update Homebrew formula
-        if: env.HOMEBREW_TAP_TOKEN != '' && startsWith(github.ref, 'refs/tags/v')
+      - name: Update Homebrew formula (if HOMEBREW_TAP_TOKEN set)
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION_TAG: ${{ github.ref_name }}
+        shell: bash
         run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping formula update"
+            exit 0
+          fi
+          if [[ ! "$VERSION_TAG" =~ ^v ]]; then
+            echo "Not a tag push — skipping formula update"
+            exit 0
+          fi
           VERSION="${VERSION_TAG#v}"
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/cybrium-ai/homebrew-cli.git" tap
           cd tap
 
-          # SHA256s exported by the previous step (slugified — replace . / - with _)
           DARWIN_ARM=$(cd ../dist && sha256sum cy-tls-darwin-arm64 | awk '{print $1}')
           DARWIN_X64=$(cd ../dist && sha256sum cy-tls-darwin-amd64 | awk '{print $1}')
           LINUX_ARM=$(cd ../dist  && sha256sum cy-tls-linux-arm64  | awk '{print $1}')
@@ -265,13 +286,20 @@ jobs:
           git commit -m "cy-tls ${VERSION} — automated update from release pipeline" || echo "no changes"
           git push origin main
 
-      # ── Update Scoop manifest on cybrium-ai/scoop-bucket ────────────
-      - name: Update Scoop manifest
-        if: env.HOMEBREW_TAP_TOKEN != '' && startsWith(github.ref, 'refs/tags/v')
+      - name: Update Scoop manifest (if HOMEBREW_TAP_TOKEN set)
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION_TAG: ${{ github.ref_name }}
+        shell: bash
         run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping Scoop update"
+            exit 0
+          fi
+          if [[ ! "$VERSION_TAG" =~ ^v ]]; then
+            echo "Not a tag push — skipping Scoop update"
+            exit 0
+          fi
           VERSION="${VERSION_TAG#v}"
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/cybrium-ai/scoop-bucket.git" scoop
           cd scoop
