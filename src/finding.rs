@@ -92,6 +92,7 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     // ── Padding oracle / cross-protocol ─────────────────────────────
     ("TLS-ROBOT-VULNERABLE",  Severity::Critical, "RSA padding oracle (ROBOT) detected"),
     ("TLS-DROWN-VULNERABLE",  Severity::Critical, "Server shares cert with SSLv2 server (DROWN)"),
+    ("TLS-HEARTBLEED",        Severity::Critical, "Heartbleed (CVE-2014-0160) — server leaks memory via heartbeat over-read"),
 
     // ── HSTS ────────────────────────────────────────────────────────
     ("HSTS-MISSING",         Severity::Medium, "Strict-Transport-Security header not sent"),
@@ -142,7 +143,7 @@ mod tests {
 
     #[test]
     fn catalog_count_matches_design_doc() {
-        // Spec promises 37 stable IDs in v0.1.0.
-        assert_eq!(FINDING_CATALOG.len(), 37, "FINDING_CATALOG size drifted from spec");
+        // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED for the active probe.
+        assert_eq!(FINDING_CATALOG.len(), 38, "FINDING_CATALOG size drifted from spec");
     }
 }

@@ -51,7 +51,7 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Cross-protocol attacks ──────────────────────────────────
         "TLS-CLIENT-RENEG-ALLOWED" | "TLS-COMPRESSION-ENABLED"
         | "TLS-HEARTBEAT-ENABLED" | "TLS-ROBOT-VULNERABLE"
-        | "TLS-DROWN-VULNERABLE" => vec![
+        | "TLS-DROWN-VULNERABLE" | "TLS-HEARTBLEED" => vec![
             "NIST 800-53 SC-13",
             "PCI DSS 4.2.1",
         ],

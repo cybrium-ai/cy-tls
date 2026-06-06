@@ -12,6 +12,7 @@ mod tls12_features;
 mod handshake_sim;
 mod ocsp;
 mod pqc;
+mod vuln_heartbleed;
 mod cert;
 mod cipher;
 mod extensions;
@@ -123,6 +124,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         protocols.pqc = Some(p);
     }
 
+
     if let Some(c) = &certificate {
         c.contribute_findings(target, &mut findings);
     }
@@ -193,6 +195,20 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         }
     }
     extensions.contribute_findings(target, &mut findings);
+
+    // Heartbleed active probe — only runs when the server advertised
+    // the heartbeat extension (the vulnerability is gated on that).
+    if extensions.heartbeat.offered {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let v = vuln_heartbleed::probe(target, host_str, true, timeout).await;
+        if matches!(v, vuln_heartbleed::HeartbleedVerdict::Vulnerable) {
+            findings.push(crate::finding::make(
+                "TLS-HEARTBLEED",
+                target,
+                "Server responded to malformed heartbeat with over-read payload",
+            ));
+        }
+    }
 
     // HSTS / Expect-CT headers.
     let headers = headers::fetch(target, timeout).unwrap_or_default();
