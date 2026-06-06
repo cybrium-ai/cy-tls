@@ -146,9 +146,11 @@ fn read_targets_file(path: &PathBuf) -> Result<Vec<String>> {
 
 fn emit(reports: &[ScanReport], format: OutputFormat) -> Result<()> {
     match format {
-        OutputFormat::Json => crate::output::json::emit(reports),
+        OutputFormat::Json  => crate::output::json::emit(reports),
         OutputFormat::Jsonl => crate::output::jsonl::emit(reports),
         OutputFormat::Sarif => crate::output::sarif::emit(reports),
+        OutputFormat::Csv   => crate::output::csv::emit(reports),
+        OutputFormat::Html  => crate::output::html::emit(reports),
     }
 }
 

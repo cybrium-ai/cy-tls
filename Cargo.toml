@@ -40,7 +40,7 @@ byteorder    = "1.5"
 ureq         = { version = "2.10", default-features = false, features = ["tls"] }
 
 # Embedded UI server (cy-tls gui)
-axum         = { version = "0.7", default-features = false, features = ["http1", "json", "tokio"] }
+axum         = { version = "0.7", default-features = false, features = ["http1", "json", "query", "tokio"] }
 tower        = "0.4"
 tower-http   = { version = "0.5", features = ["cors"] }
 

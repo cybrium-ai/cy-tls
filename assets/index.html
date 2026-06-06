@@ -81,6 +81,15 @@
     font-size: 12px; cursor: pointer;
   }
   button.ghost:hover { color: var(--fg-bright); border-color: var(--primary-2); }
+  .exportbtn {
+    padding: 5px 10px; background: var(--panel-2); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 5px;
+    font-size: 11px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
+    transition: all 0.12s;
+  }
+  .exportbtn:hover { background: var(--primary); color: var(--fg-bright); border-color: var(--primary); }
+  #exports { display: none; }
+  #exports.shown { display: flex; gap: 6px; }
 
   .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
   .tile  { text-align: center; padding: 12px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; }
@@ -145,7 +154,16 @@
   </section>
 
   <section class="panel" id="results">
-    <h2>Findings</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h2 style="margin:0;">Findings</h2>
+      <div id="exports" style="display:none; gap:6px;">
+        <button class="exportbtn" data-fmt="json">JSON</button>
+        <button class="exportbtn" data-fmt="jsonl">JSONL</button>
+        <button class="exportbtn" data-fmt="sarif">SARIF</button>
+        <button class="exportbtn" data-fmt="csv">CSV</button>
+        <button class="exportbtn" data-fmt="html">HTML</button>
+      </div>
+    </div>
     <div id="tiles" class="tiles" style="display:none">
       <div class="tile critical"><span class="n" id="t-c">0</span><span class="l">Critical</span></div>
       <div class="tile high"><span class="n" id="t-h">0</span><span class="l">High</span></div>
@@ -198,12 +216,15 @@ async function runScan() {
 
 function render() {
   const findings = allReports.flatMap(r => r.findings);
+  const $exports = el("exports");
   if (!findings.length && !allReports.length) {
     $tiles.style.display = "none";
+    $exports.classList.remove("shown");
     $content.innerHTML = `<div class="empty">No findings — every probe passed cleanly. ✓</div>`;
     return;
   }
   $tiles.style.display = "grid";
+  if (allReports.length) $exports.classList.add("shown");
   el("t-c").textContent = findings.filter(f => f.severity === "critical").length;
   el("t-h").textContent = findings.filter(f => f.severity === "high").length;
   el("t-m").textContent = findings.filter(f => f.severity === "medium").length;
@@ -231,6 +252,27 @@ function render() {
 
 $run.addEventListener("click", runScan);
 $clear.addEventListener("click", () => { allReports = []; render(); });
+
+// Export buttons — fetch the API, trigger a download with a sensible filename.
+document.querySelectorAll(".exportbtn").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const fmt = btn.dataset.fmt;
+    try {
+      const res = await fetch(`/api/export?format=${fmt}`);
+      if (!res.ok) { alert("Export failed: " + res.status); return; }
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const filename = m ? m[1] : `cy-tls-report.${fmt}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; document.body.appendChild(a);
+      a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Export failed: " + e.message);
+    }
+  });
+});
 </script>
 </body>
 </html>

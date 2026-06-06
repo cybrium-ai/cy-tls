@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
-    extract::State,
-    http::StatusCode,
+    extract::{Query, State},
+    http::{header, StatusCode},
     response::{Html, IntoResponse},
     routing::{get, post},
     Json, Router,
@@ -24,7 +24,8 @@ use axum::{
 use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::cli::GuiArgs;
+use crate::cli::{GuiArgs, OutputFormat};
+use crate::output;
 use crate::scan::{self, ScanReport};
 
 #[derive(Clone)]
@@ -43,6 +44,7 @@ pub async fn run(args: GuiArgs) -> Result<()> {
         .route("/api/scan", post(api_scan))
         .route("/api/history", get(api_history))
         .route("/api/findings", get(api_finding_catalog))
+        .route("/api/export", get(api_export))
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any))
         .with_state(state);
 
@@ -105,6 +107,78 @@ async fn api_scan(
 async fn api_history(State(state): State<AppState>) -> impl IntoResponse {
     let hist = state.history.read().await;
     Json(serde_json::json!({ "reports": *hist }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ExportQuery {
+    format: String,
+}
+
+async fn api_export(
+    State(state): State<AppState>,
+    Query(q): Query<ExportQuery>,
+) -> impl IntoResponse {
+    let format = match q.format.as_str() {
+        "json"  => OutputFormat::Json,
+        "jsonl" => OutputFormat::Jsonl,
+        "sarif" => OutputFormat::Sarif,
+        "csv"   => OutputFormat::Csv,
+        "html"  => OutputFormat::Html,
+        _ => return (StatusCode::BAD_REQUEST, "unsupported format").into_response(),
+    };
+
+    let hist = state.history.read().await;
+    let body: String = match format {
+        OutputFormat::Json  => serde_json::to_string_pretty(&*hist).unwrap_or_default() + "\n",
+        OutputFormat::Jsonl => hist.iter()
+            .filter_map(|r| serde_json::to_string(r).ok())
+            .collect::<Vec<_>>().join("\n") + "\n",
+        OutputFormat::Sarif => render_sarif(&hist),
+        OutputFormat::Csv   => output::csv::render(&hist),
+        OutputFormat::Html  => output::html::render(&hist),
+    };
+
+    let date = chrono::Utc::now().format("%Y-%m-%d");
+    let filename = format!("cy-tls-report-{date}.{}", format.extension());
+
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, format.content_type().to_string()),
+            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{filename}\"")),
+        ],
+        body,
+    ).into_response()
+}
+
+fn render_sarif(reports: &[ScanReport]) -> String {
+    // Reuse the SARIF emitter's structure by building the document inline.
+    use serde_json::json;
+    let runs: Vec<_> = reports.iter().map(|r| {
+        let results: Vec<_> = r.findings.iter().map(|f| json!({
+            "ruleId": f.id,
+            "level": match f.severity.as_str() {
+                "critical" | "high" => "error",
+                "medium" => "warning",
+                _ => "note",
+            },
+            "message": { "text": format!("{}: {}", f.title, f.evidence) },
+            "locations": [{ "physicalLocation": { "artifactLocation": { "uri": f.host } } }]
+        })).collect();
+        json!({
+            "tool": { "driver": {
+                "name": "cy-tls",
+                "version": env!("CARGO_PKG_VERSION"),
+                "informationUri": "https://github.com/cybrium-ai/cy-tls"
+            }},
+            "results": results
+        })
+    }).collect();
+    serde_json::to_string_pretty(&json!({
+        "version": "2.1.0",
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "runs": runs
+    })).unwrap_or_default() + "\n"
 }
 
 async fn api_finding_catalog() -> impl IntoResponse {

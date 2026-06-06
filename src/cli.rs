@@ -82,9 +82,37 @@ pub struct VerifyPreloadArgs {
 
 #[derive(Debug, Clone, clap::ValueEnum)]
 pub enum OutputFormat {
+    /// Pretty-printed JSON array — default.
     Json,
+    /// One JSON object per line (one per target).
     Jsonl,
+    /// SARIF 2.1.0 for GitHub / GitLab code-scanning ingestion.
     Sarif,
+    /// One CSV row per finding — opens in Excel / Google Sheets natively.
+    Csv,
+    /// Standalone Cybrium-branded HTML report — emails + archives cleanly.
+    Html,
+}
+
+impl OutputFormat {
+    pub fn extension(&self) -> &'static str {
+        match self {
+            OutputFormat::Json => "json",
+            OutputFormat::Jsonl => "jsonl",
+            OutputFormat::Sarif => "sarif",
+            OutputFormat::Csv => "csv",
+            OutputFormat::Html => "html",
+        }
+    }
+
+    pub fn content_type(&self) -> &'static str {
+        match self {
+            OutputFormat::Json | OutputFormat::Sarif => "application/json",
+            OutputFormat::Jsonl => "application/x-ndjson",
+            OutputFormat::Csv => "text/csv",
+            OutputFormat::Html => "text/html; charset=utf-8",
+        }
+    }
 }
 
 #[derive(Debug, Args)]
