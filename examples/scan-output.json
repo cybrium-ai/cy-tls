@@ -1,0 +1,71 @@
+[
+  {
+    "target":     "example.com:443",
+    "ip":         "93.184.216.34",
+    "elapsed_ms": 1247,
+    "protocols": {
+      "sslv2":  { "supported": false },
+      "sslv3":  { "supported": false },
+      "tls10":  { "supported": false },
+      "tls11":  { "supported": false },
+      "tls12":  { "supported": true, "ciphers": ["TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"] },
+      "tls13": {
+        "supported": true,
+        "ciphers": ["TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256"],
+        "zero_rtt_accepted": false,
+        "ech_advertised": false,
+        "hello_retry_required": false
+      }
+    },
+    "certificate": {
+      "subject":             "CN=example.com",
+      "issuer":              "CN=DigiCert RSA TLS CA G1, O=DigiCert Inc",
+      "san":                 ["example.com", "www.example.com"],
+      "not_before":          "2025-12-01T00:00:00Z",
+      "not_after":           "2026-12-31T23:59:59Z",
+      "days_remaining":      211,
+      "signature_algorithm": "sha256WithRSAEncryption",
+      "key_algorithm":       "rsaEncryption",
+      "key_bits":            2048,
+      "chain_complete":      true,
+      "self_signed":         false,
+      "ev":                  false,
+      "must_staple":         false,
+      "sct_count":           2,
+      "ocsp_stapled":        true,
+      "ocsp_status":         "good"
+    },
+    "key_exchange": {
+      "dh_param_bits": null,
+      "ecdhe_curves":  ["X25519", "secp256r1"],
+      "preferred_curve": "X25519",
+      "common_prime_dh": false
+    },
+    "extensions": {
+      "alpn":           ["h2", "http/1.1"],
+      "renegotiation":  { "secure": true, "client_initiated_allowed": false },
+      "compression":    { "offered": false },
+      "heartbeat":      { "offered": false },
+      "session_ticket": { "offered": true, "ttl_seconds": 21600 }
+    },
+    "headers": {
+      "hsts": {
+        "present":            true,
+        "max_age":            31536000,
+        "include_subdomains": true,
+        "preload":            true,
+        "in_preload_list":    true
+      },
+      "expect_ct": { "present": false },
+      "hpkp":      { "present": false }
+    },
+    "timings_ms": {
+      "connect":      12,
+      "client_hello": 41,
+      "cert":         88,
+      "key_exchange": 31,
+      "finish":       17
+    },
+    "findings": []
+  }
+]
