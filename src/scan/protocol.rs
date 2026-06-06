@@ -66,6 +66,11 @@ impl ProtocolSupport {
     pub fn contribute_findings(&self, host: &str, findings: &mut Vec<Finding>) {
         if self.sslv2.supported {
             findings.push(make("TLS-SSLV2", host, "SSLv2 ClientHello accepted"));
+            // SSLv2 enabled on the same host as a modern TLS port is a
+            // textbook DROWN (CVE-2016-0800) exposure — the SSLv2
+            // server provides the Bleichenbacher oracle that decrypts
+            // TLS sessions on a different port sharing the same key.
+            findings.push(make("TLS-DROWN-VULNERABLE", host, "SSLv2 enabled on the same host — DROWN attack surface"));
         }
         if self.sslv3.supported {
             findings.push(make("TLS-SSLV3", host, "SSLv3 ClientHello accepted"));
@@ -125,6 +130,10 @@ pub async fn enumerate(
         super::legacy_proto::probe_version(target, &host_str, 0x03, 0x01, per_probe).await;
     report.tls11.supported =
         super::legacy_proto::probe_version(target, &host_str, 0x03, 0x02, per_probe).await;
+    report.sslv3.supported =
+        super::legacy_proto::probe_version(target, &host_str, 0x03, 0x00, per_probe).await;
+    report.sslv2.supported =
+        super::legacy_proto::probe_sslv2(target, per_probe).await;
 
     timings.client_hello = hello_start.elapsed().as_millis() as u64;
     Ok(report)
