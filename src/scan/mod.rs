@@ -148,6 +148,11 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         if !accepted_at_12.is_empty() {
             protocols.tls12.supported = true;
         }
+        // ROBOT eligibility — any RSA key-exchange cipher (not ECDHE/DHE).
+        // Servers in this state are *potentially* vulnerable to
+        // Bleichenbacher's RSA padding oracle. Full active oracle test
+        // (5 variant ClientKeyExchange messages) is Phase 3.x work.
+        let mut robot_eligible = false;
         for suite_id in &accepted_at_12 {
             let name = cipher_enum::name(*suite_id);
             // Only add if not already populated by the modern rustls path.
@@ -164,6 +169,17 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
             if let Some(fid) = weak_id {
                 findings.push(crate::finding::make(fid, target, format!("cipher 0x{:04x} accepted", suite_id)));
             }
+            // TLS_RSA_WITH_* = RSA key exchange, ROBOT-eligible attack surface.
+            if matches!(*suite_id, 0x002f | 0x0035 | 0x009c | 0x009d | 0x0001 | 0x0002 | 0x0004 | 0x0005 | 0x000a) {
+                robot_eligible = true;
+            }
+        }
+        if robot_eligible {
+            findings.push(crate::finding::make(
+                "TLS-ROBOT-VULNERABLE",
+                target,
+                "RSA key-exchange cipher accepted — potentially exposes Bleichenbacher RSA padding oracle. Full active probe in v0.3.x.",
+            ));
         }
     }
 
