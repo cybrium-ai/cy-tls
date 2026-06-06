@@ -6,6 +6,7 @@
 mod connect;
 mod protocol;
 mod legacy_proto;
+mod cipher_enum;
 mod cert;
 mod cipher;
 mod extensions;
@@ -87,7 +88,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Re
 
     // Protocol enumeration — currently rustls-only (TLS 1.2 + 1.3).
     // SSLv2/v3/TLS1.0/1.1 raw-protocol probes are TODO Phase 2.
-    let protocols = protocol::enumerate(target, timeout, &mut timings).await?;
+    let mut protocols = protocol::enumerate(target, timeout, &mut timings).await?;
     protocols.contribute_findings(target, &mut findings);
 
     // Certificate chain walk.
@@ -96,12 +97,43 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Re
         c.contribute_findings(target, &mut findings);
     }
 
-    // Cipher / key exchange — stub for v0.1.0; bisection enum is Phase 2.
+    // Cipher / key exchange.
     let key_exchange = if skip_cipher_enum {
         cipher::KeyExchangeInfo::default()
     } else {
         cipher::inspect(target, timeout).await.unwrap_or_default()
     };
+
+    // TLS 1.2 cipher enumeration via raw ClientHello bisection. Skipped
+    // when --no-cipher-enum is set since each enumeration costs ~5-8
+    // extra handshakes per host.
+    if !skip_cipher_enum {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let accepted_at_12 = cipher_enum::enumerate_at_version(
+            target, host_str, 0x03, 0x03,
+            cipher_enum::TLS12_SUITES, timeout,
+        ).await;
+        if !accepted_at_12.is_empty() {
+            protocols.tls12.supported = true;
+        }
+        for suite_id in &accepted_at_12 {
+            let name = cipher_enum::name(*suite_id);
+            // Only add if not already populated by the modern rustls path.
+            if !protocols.tls12.ciphers.iter().any(|c| c == name) && name != "UNKNOWN" {
+                protocols.tls12.ciphers.push(name.to_string());
+            }
+            // Weak-cipher findings.
+            let weak_id = match *suite_id {
+                0x000a => Some("TLS-3DES-CIPHER"),
+                0x0005 | 0x0004 => Some("TLS-RC4-CIPHER"),
+                0x0001 | 0x0002 => Some("TLS-NULL-CIPHER"),
+                _ => None,
+            };
+            if let Some(fid) = weak_id {
+                findings.push(crate::finding::make(fid, target, format!("cipher 0x{:04x} accepted", suite_id)));
+            }
+        }
+    }
 
     // Extensions: renegotiation, compression, heartbeat. Phase 2.
     let extensions = extensions::probe(target, timeout).await.unwrap_or_default();
