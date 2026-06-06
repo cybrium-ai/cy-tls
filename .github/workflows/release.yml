@@ -1,69 +1,182 @@
 name: release
 
+# Mirrors the cyweb release pattern:
+#   - 5 platforms (linux x64 + arm64, darwin x64 + arm64, windows x64)
+#   - Raw binary uploads (no tar.gz wrapping) named cy-tls-<os>-<arch>[.exe]
+#   - Apple code signing + notarization (when secrets present)
+#   - Azure Trusted Signing for Windows (when secrets present, via OIDC)
+#   - Auto-update Homebrew formula + Scoop manifest (when HOMEBREW_TAP_TOKEN present)
+#
+# Required secrets for full signing (copy from cybrium-ai/cyweb):
+#   APPLE_CERTIFICATE_BASE64   APPLE_CERTIFICATE_PASSWORD   APPLE_SIGNING_IDENTITY
+#   APPLE_ID                   APPLE_APP_PASSWORD           APPLE_TEAM_ID
+#   AZURE_CLIENT_ID            AZURE_TENANT_ID
+#   HOMEBREW_TAP_TOKEN
+#
+# Without those secrets the pipeline still produces unsigned binaries and
+# uploads them — only the signing + tap-update steps are skipped.
+
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
+  id-token: write    # OIDC federated token for Azure Trusted Signing
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    name: build (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
+    name: build (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,    ext: ""      }
-          - { os: ubuntu-latest,  target: aarch64-unknown-linux-gnu,   ext: ""      }
-          - { os: macos-latest,   target: x86_64-apple-darwin,         ext: ""      }
-          - { os: macos-latest,   target: aarch64-apple-darwin,        ext: ""      }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc,      ext: ".exe"  }
+          - target: x86_64-unknown-linux-gnu
+            os:     ubuntu-latest
+            name:   cy-tls-linux-amd64
+            sign:   false
+          - target: aarch64-unknown-linux-gnu
+            os:     ubuntu-24.04-arm
+            name:   cy-tls-linux-arm64
+            sign:   false
+          - target: x86_64-apple-darwin
+            os:     macos-14
+            name:   cy-tls-darwin-amd64
+            sign:   true
+          - target: aarch64-apple-darwin
+            os:     macos-14
+            name:   cy-tls-darwin-arm64
+            sign:   true
+          - target: x86_64-pc-windows-msvc
+            os:     windows-latest
+            name:   cy-tls-windows-amd64.exe
+            sign:   false
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - name: Install cross (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: cargo install cross --git https://github.com/cross-rs/cross
+
       - uses: Swatinem/rust-cache@v2
-      - name: Build
+
+      - name: Build (cross for arm64-linux)
         shell: bash
         run: |
           if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            cargo install cross --git https://github.com/cross-rs/cross
             cross build --release --target ${{ matrix.target }}
           else
             cargo build --release --target ${{ matrix.target }}
           fi
-      - name: Package
+
+      - name: Stage binary
         shell: bash
         run: |
-          set -e
-          name="cy-tls-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/cy-tls${{ matrix.ext }} dist/
-          cp README.md LICENSE dist/
-          cd dist
-          if [ "${{ matrix.ext }}" = ".exe" ]; then
-            7z a "${name}.zip" cy-tls.exe README.md LICENSE
+          if [[ "${{ matrix.name }}" == *.exe ]]; then
+            cp target/${{ matrix.target }}/release/cy-tls.exe dist/${{ matrix.name }}
           else
-            tar czf "${name}.tar.gz" cy-tls README.md LICENSE
+            cp target/${{ matrix.target }}/release/cy-tls    dist/${{ matrix.name }}
           fi
+          ls -la dist
+
+      # ── Apple code signing (macOS builds only, when secrets present) ─
+      - name: Import Apple signing certificate
+        if: matrix.sign && env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64:   ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/cert.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+          echo -n "$APPLE_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+      - name: Sign macOS binary
+        if: matrix.sign && env.APPLE_SIGNING_IDENTITY != ''
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          codesign --force --options runtime --timestamp \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            dist/${{ matrix.name }}
+          codesign --verify --verbose=2 dist/${{ matrix.name }}
+
+      # ── Azure Trusted Signing (Windows, when secrets present) ───────
+      - name: Azure login (federated OIDC)
+        if: runner.os == 'Windows' && env.AZURE_CLIENT_ID != '' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Sign Windows binary via Azure Trusted Signing
+        if: runner.os == 'Windows' && env.AZURE_CLIENT_ID != '' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        uses: Azure/trusted-signing-action@v0.5
+        with:
+          azure-tenant-id:              ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id:              ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint:                     https://cus.codesigning.azure.net/
+          trusted-signing-account-name: cybrium-signing
+          certificate-profile-name:     cybrium
+          files-folder:                 dist
+          files-folder-filter:          exe
+          file-digest:                  SHA256
+          timestamp-rfc3161:            http://timestamp.acs.microsoft.com
+          timestamp-digest:             SHA256
+
+      - name: Verify Windows signature
+        if: runner.os == 'Windows' && env.AZURE_CLIENT_ID != '' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        shell: pwsh
+        run: |
+          $sig = Get-AuthenticodeSignature dist/${{ matrix.name }}
+          Write-Host "Status: $($sig.Status)"
+          Write-Host "Signer: $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne 'Valid') { throw "Signature verification failed: $($sig.Status)" }
+
+      # ── Apple notarization (macOS only, when secrets present) ───────
+      - name: Notarize macOS binary
+        if: matrix.sign && env.APPLE_ID != ''
+        env:
+          APPLE_ID:           ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID:      ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent dist/${{ matrix.name }} /tmp/${{ matrix.name }}.zip
+          xcrun notarytool submit /tmp/${{ matrix.name }}.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id  "$APPLE_TEAM_ID" \
+            --wait
+          echo "Notarization complete for ${{ matrix.name }}"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
-          path: dist/*.tar.gz
-          if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.target }}-zip
-          path: dist/*.zip
-          if-no-files-found: ignore
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}
+          if-no-files-found: error
 
   publish:
-    name: publish
+    name: publish (release + Homebrew + Scoop)
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -71,7 +184,124 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: Compute SHA256s
+        id: sha
+        shell: bash
+        run: |
+          cd dist
+          for f in *; do
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            echo "${f//[.-]/_}=$sha" >> "$GITHUB_OUTPUT"
+            echo "  $f → $sha"
+          done
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
+
+      # ── Update Homebrew formula on cybrium-ai/homebrew-cli ──────────
+      - name: Update Homebrew formula
+        if: env.HOMEBREW_TAP_TOKEN != '' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION_TAG#v}"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/cybrium-ai/homebrew-cli.git" tap
+          cd tap
+
+          # SHA256s exported by the previous step (slugified — replace . / - with _)
+          DARWIN_ARM=$(cd ../dist && sha256sum cy-tls-darwin-arm64 | awk '{print $1}')
+          DARWIN_X64=$(cd ../dist && sha256sum cy-tls-darwin-amd64 | awk '{print $1}')
+          LINUX_ARM=$(cd ../dist  && sha256sum cy-tls-linux-arm64  | awk '{print $1}')
+          LINUX_X64=$(cd ../dist  && sha256sum cy-tls-linux-amd64  | awk '{print $1}')
+
+          cat > Formula/cy-tls.rb <<EOF
+          class CyTls < Formula
+            desc     "Cybrium SSL/TLS posture scanner — full probe suite, HSTS preload lookup"
+            homepage "https://github.com/cybrium-ai/cy-tls"
+            license  "Apache-2.0"
+            version  "${VERSION}"
+
+            on_macos do
+              on_arm do
+                url    "https://github.com/cybrium-ai/cy-tls/releases/download/${VERSION_TAG}/cy-tls-darwin-arm64"
+                sha256 "${DARWIN_ARM}"
+              end
+              on_intel do
+                url    "https://github.com/cybrium-ai/cy-tls/releases/download/${VERSION_TAG}/cy-tls-darwin-amd64"
+                sha256 "${DARWIN_X64}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url    "https://github.com/cybrium-ai/cy-tls/releases/download/${VERSION_TAG}/cy-tls-linux-arm64"
+                sha256 "${LINUX_ARM}"
+              end
+              on_intel do
+                url    "https://github.com/cybrium-ai/cy-tls/releases/download/${VERSION_TAG}/cy-tls-linux-amd64"
+                sha256 "${LINUX_X64}"
+              end
+            end
+
+            def install
+              if OS.mac? && Hardware::CPU.arm?
+                bin.install "cy-tls-darwin-arm64" => "cy-tls"
+              elsif OS.mac? && Hardware::CPU.intel?
+                bin.install "cy-tls-darwin-amd64" => "cy-tls"
+              elsif OS.linux? && Hardware::CPU.arm?
+                bin.install "cy-tls-linux-arm64"  => "cy-tls"
+              else
+                bin.install "cy-tls-linux-amd64"  => "cy-tls"
+              end
+            end
+
+            test do
+              assert_match "cy-tls", shell_output("#{bin}/cy-tls --version")
+            end
+          end
+          EOF
+
+          git config user.email "release@cybrium.ai"
+          git config user.name  "Cybrium Release Bot"
+          git add Formula/cy-tls.rb
+          git commit -m "cy-tls ${VERSION} — automated update from release pipeline" || echo "no changes"
+          git push origin main
+
+      # ── Update Scoop manifest on cybrium-ai/scoop-bucket ────────────
+      - name: Update Scoop manifest
+        if: env.HOMEBREW_TAP_TOKEN != '' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION_TAG#v}"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/cybrium-ai/scoop-bucket.git" scoop
+          cd scoop
+
+          WIN_SHA=$(cd ../dist && sha256sum cy-tls-windows-amd64.exe | awk '{print $1}')
+
+          cat > bucket/cy-tls.json <<EOF
+          {
+            "version": "${VERSION}",
+            "description": "Cybrium cy-tls — signed Windows SSL/TLS posture scanner",
+            "homepage": "https://github.com/cybrium-ai/cy-tls",
+            "license": "Apache-2.0",
+            "url": "https://github.com/cybrium-ai/cy-tls/releases/download/${VERSION_TAG}/cy-tls-windows-amd64.exe",
+            "hash": "sha256:${WIN_SHA}",
+            "bin": [["cy-tls-windows-amd64.exe", "cy-tls"]],
+            "checkver": "github",
+            "autoupdate": {
+              "url": "https://github.com/cybrium-ai/cy-tls/releases/download/v\$version/cy-tls-windows-amd64.exe"
+            }
+          }
+          EOF
+
+          git config user.email "release@cybrium.ai"
+          git config user.name  "Cybrium Release Bot"
+          git add bucket/cy-tls.json
+          git commit -m "cy-tls ${VERSION} — automated update from release pipeline" || echo "no changes"
+          git push origin main
