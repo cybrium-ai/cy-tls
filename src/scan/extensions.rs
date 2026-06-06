@@ -14,6 +14,9 @@ pub struct ExtensionInfo {
     pub compression:    Compression,
     pub heartbeat:      Heartbeat,
     pub session_ticket: SessionTicket,
+    /// TLS 1.2 ticket + TLS 1.3 PSK resumption probe results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_resumption: Option<super::session::SessionResumption>,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]

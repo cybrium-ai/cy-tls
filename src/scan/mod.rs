@@ -7,6 +7,7 @@ mod connect;
 mod protocol;
 mod legacy_proto;
 mod cipher_enum;
+mod session;
 mod cert;
 mod cipher;
 mod extensions;
@@ -136,7 +137,16 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Re
     }
 
     // Extensions: renegotiation, compression, heartbeat. Phase 2.
-    let extensions = extensions::probe(target, timeout).await.unwrap_or_default();
+    let mut extensions = extensions::probe(target, timeout).await.unwrap_or_default();
+
+    // Session resumption probe — second handshake within the same
+    // ClientConfig; cheap (2 handshakes, ~200ms total).
+    if !skip_cipher_enum {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let s = session::probe(target, host_str, timeout).await;
+        extensions.session_ticket.offered = s.tls13_psk || s.tls12_ticket;
+        extensions.session_resumption = Some(s);
+    }
     extensions.contribute_findings(target, &mut findings);
 
     // HSTS / Expect-CT headers.
