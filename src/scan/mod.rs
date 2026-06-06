@@ -168,7 +168,6 @@ fn stub_report(target: String, ip: Option<String>, elapsed_ms: u64, findings: Ve
 }
 
 fn failed_report(target: String, error: String) -> ScanReport {
-    let mut findings = Vec::new();
-    findings.push(crate::finding::make("TLS-UNREACHABLE", &target, error));
+    let findings = vec![crate::finding::make("TLS-UNREACHABLE", &target, error)];
     stub_report(target, None, 0, findings)
 }
