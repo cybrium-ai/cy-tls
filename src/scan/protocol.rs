@@ -38,6 +38,11 @@ pub struct ProtocolSupport {
     /// server doesn't speak ALPN or didn't pick one of our offers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alpn: Option<String>,
+    /// Post-Quantum Cryptography key-exchange support (X25519MLKEM768
+    /// and earlier Kyber768 hybrids). Populated by a separate raw
+    /// ClientHello probe in scan::pqc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pqc: Option<super::pqc::PqcInfo>,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]

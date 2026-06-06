@@ -11,6 +11,7 @@ mod session;
 mod tls12_features;
 mod handshake_sim;
 mod ocsp;
+mod pqc;
 mod cert;
 mod cipher;
 mod extensions;
@@ -112,6 +113,14 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
             c.ocsp_stapled = o.stapled;
             c.ocsp_status  = o.status;
         }
+    }
+
+    // PQC key-exchange probe — single handshake offering X25519MLKEM768
+    // alongside X25519 fallback. Cheap enough to always run.
+    {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let p = pqc::probe(target, host_str, timeout).await;
+        protocols.pqc = Some(p);
     }
 
     if let Some(c) = &certificate {
