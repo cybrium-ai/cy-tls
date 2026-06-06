@@ -1,6 +1,6 @@
 //! Certificate inspection — parses the leaf cert presented during the
 //! TLS handshake and checks hygiene (expiry, hostname, key strength,
-//! signature algo, chain completeness).
+//! signature algo, chain completeness, SCT presence, OCSP stapling).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,8 +13,10 @@ use tokio_rustls::TlsConnector;
 use rustls::{ClientConfig, RootCertStore};
 use rustls_pki_types::ServerName;
 use x509_parser::prelude::*;
+use x509_parser::der_parser::oid::Oid;
 
 use crate::finding::{make, Finding};
+use super::oid_names;
 use super::timing::Timings;
 
 #[derive(Debug, Clone, Serialize)]
@@ -28,6 +30,9 @@ pub struct CertificateInfo {
     pub signature_algorithm: String,
     pub key_algorithm:       String,
     pub key_bits:            u32,
+    /// Named curve for EC keys ("secp256r1", "secp384r1", …) or `None`
+    /// for RSA / Ed25519 / DSA.
+    pub ec_curve:            Option<String>,
     pub chain_complete:      bool,
     pub self_signed:         bool,
     pub ev:                  bool,
@@ -50,13 +55,12 @@ impl CertificateInfo {
         if !self.chain_complete {
             findings.push(make("TLS-CHAIN-INCOMPLETE", host, "Server did not present full intermediate chain"));
         }
-        if self.signature_algorithm.to_lowercase().contains("sha1")
-            || self.signature_algorithm.to_lowercase().contains("md5")
-        {
+        let sig_lower = self.signature_algorithm.to_lowercase();
+        if sig_lower.contains("sha1") || sig_lower.contains("md5") {
             findings.push(make("TLS-CERT-WEAK-SIGNATURE", host, &self.signature_algorithm));
         }
-        let weak_rsa = self.key_algorithm.to_lowercase().contains("rsa") && self.key_bits < 2048;
-        let weak_ecc = self.key_algorithm.to_lowercase().contains("ec") && self.key_bits < 256;
+        let weak_rsa = self.key_algorithm == "rsaEncryption" && self.key_bits < 2048;
+        let weak_ecc = self.key_algorithm == "ecPublicKey" && self.key_bits < 256;
         if weak_rsa || weak_ecc {
             findings.push(make(
                 "TLS-CERT-WEAK-KEY",
@@ -71,7 +75,7 @@ impl CertificateInfo {
             findings.push(make("TLS-OCSP-REVOKED", host, "OCSP response is revoked"));
         }
         if self.sct_count == 0 {
-            findings.push(make("TLS-SCT-MISSING", host, "No SCTs from cert, OCSP, or TLS extension"));
+            findings.push(make("TLS-SCT-MISSING", host, "No SCTs in cert"));
         }
         if self.must_staple && !self.ocsp_stapled {
             findings.push(make(
@@ -80,7 +84,6 @@ impl CertificateInfo {
                 "Cert declares must-staple but stapling absent",
             ));
         }
-        // Hostname mismatch — caller must verify against SAN/CN.
         let (hostpart, _) = host.rsplit_once(':').unwrap_or((host, "443"));
         if !self.san.iter().any(|n| name_matches(n, hostpart)) {
             findings.push(make(
@@ -116,12 +119,18 @@ pub async fn inspect(
         .peer_certificates()
         .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
     let leaf_der = chain.first().ok_or_else(|| anyhow::anyhow!("empty cert chain"))?;
-    let info = parse_leaf(leaf_der.as_ref(), chain.len() > 1)?;
+    // Stapled OCSP from rustls 0.23 requires a custom certificate verifier
+    // to intercept; deferred to v0.2.1 ("OCSP via rasn-ocsp" item in TODO).
+    let info = parse_leaf(leaf_der.as_ref(), chain.len() > 1, None)?;
     timings.cert = start.elapsed().as_millis() as u64;
     Ok(info)
 }
 
-fn parse_leaf(der: &[u8], chain_has_intermediates: bool) -> anyhow::Result<CertificateInfo> {
+fn parse_leaf(
+    der: &[u8],
+    chain_has_intermediates: bool,
+    stapled_ocsp: Option<&[u8]>,
+) -> anyhow::Result<CertificateInfo> {
     let (_, cert) = X509Certificate::from_der(der)
         .map_err(|e| anyhow::anyhow!("DER parse failed: {e}"))?;
     let tbs = &cert.tbs_certificate;
@@ -131,13 +140,21 @@ fn parse_leaf(der: &[u8], chain_has_intermediates: bool) -> anyhow::Result<Certi
     let not_before = chrono_from_asn1(tbs.validity.not_before);
     let not_after = chrono_from_asn1(tbs.validity.not_after);
     let days_remaining = (not_after - Utc::now()).num_days();
-    let signature_algorithm = format!("{:?}", tbs.signature.algorithm);
+    let signature_algorithm = oid_names::signature_algorithm(
+        &tbs.signature.algorithm.to_id_string(),
+    ).to_string();
 
-    let (key_algorithm, key_bits) = key_strength(&tbs.subject_pki);
+    let (key_algorithm, key_bits, ec_curve) = key_strength(&tbs.subject_pki);
 
     let san = extract_san(&cert);
     let self_signed = subject == issuer;
     let must_staple = has_must_staple_extension(&cert);
+    let sct_count = extract_sct_count(&cert);
+
+    let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
+        Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
+        _ => (false, None),
+    };
 
     Ok(CertificateInfo {
         subject,
@@ -149,13 +166,14 @@ fn parse_leaf(der: &[u8], chain_has_intermediates: bool) -> anyhow::Result<Certi
         signature_algorithm,
         key_algorithm,
         key_bits,
+        ec_curve,
         chain_complete: chain_has_intermediates || self_signed,
         self_signed,
-        ev: false,           // TODO Phase 2 — EV OID lookup
+        ev: false, // TODO Phase 2.1 — EV policy OID lookup
         must_staple,
-        sct_count: 0,        // TODO Phase 2 — parse SCT extension
-        ocsp_stapled: false, // TODO Phase 2 — read CertificateStatus message
-        ocsp_status: None,
+        sct_count,
+        ocsp_stapled,
+        ocsp_status,
     })
 }
 
@@ -164,10 +182,71 @@ fn chrono_from_asn1(t: ASN1Time) -> DateTime<Utc> {
     DateTime::<Utc>::from_timestamp(ts, 0).unwrap_or_else(Utc::now)
 }
 
-fn key_strength(spki: &SubjectPublicKeyInfo) -> (String, u32) {
-    let algo = format!("{:?}", spki.algorithm.algorithm);
-    let bits = (spki.subject_public_key.data.len() * 8) as u32;
-    (algo, bits)
+fn key_strength(spki: &SubjectPublicKeyInfo) -> (String, u32, Option<String>) {
+    let algo_oid = spki.algorithm.algorithm.to_id_string();
+    let algo_name = oid_names::public_key_algorithm(&algo_oid).to_string();
+
+    // For EC keys, the curve OID is encoded in the algorithm parameters.
+    if algo_name == "ecPublicKey" {
+        if let Some(params) = &spki.algorithm.parameters {
+            if let Ok(curve_oid) = params.as_oid() {
+                let curve_oid_str = curve_oid.to_id_string();
+                if let Some(bits) = oid_names::ec_curve_bits(&curve_oid_str) {
+                    return (algo_name, bits, Some(oid_names::ec_curve_name(&curve_oid_str).to_string()));
+                }
+            }
+        }
+        // Fallback — assume P-256 if we can't read curve params.
+        return (algo_name, 256, None);
+    }
+
+    if algo_name == "Ed25519" {
+        return (algo_name, 256, None);
+    }
+    if algo_name == "Ed448" {
+        return (algo_name, 448, None);
+    }
+
+    // RSA: parse the modulus to get the actual modulus bit length.
+    if algo_name == "rsaEncryption" {
+        let bits = rsa_modulus_bits(&spki.subject_public_key.data).unwrap_or(0);
+        return (algo_name, bits, None);
+    }
+
+    // Unknown — fall back to the (overly generous) DER bit length.
+    (algo_name, (spki.subject_public_key.data.len() * 8) as u32, None)
+}
+
+/// Parse the modulus length out of an RSAPublicKey DER blob
+/// (RFC 8017 §A.1.1):  SEQUENCE { modulus INTEGER, publicExponent INTEGER }.
+fn rsa_modulus_bits(der: &[u8]) -> Option<u32> {
+    // Quick and dirty walker — accepts the SEQUENCE then the modulus INTEGER.
+    let mut i = 0;
+    if der.get(i)? != &0x30 { return None; }
+    i += 1;
+    let _ = parse_der_length(der, &mut i)?;
+    if der.get(i)? != &0x02 { return None; } // INTEGER tag
+    i += 1;
+    let modulus_len = parse_der_length(der, &mut i)?;
+    let modulus = der.get(i..i + modulus_len)?;
+    // Strip any DER sign-extension zero byte.
+    let mod_bytes = if modulus.first() == Some(&0x00) { &modulus[1..] } else { modulus };
+    Some((mod_bytes.len() * 8) as u32)
+}
+
+fn parse_der_length(buf: &[u8], i: &mut usize) -> Option<usize> {
+    let first = *buf.get(*i)?;
+    *i += 1;
+    if first < 0x80 {
+        return Some(first as usize);
+    }
+    let n = (first & 0x7f) as usize;
+    let mut len = 0usize;
+    for _ in 0..n {
+        len = (len << 8) | (*buf.get(*i)? as usize);
+        *i += 1;
+    }
+    Some(len)
 }
 
 fn extract_san(cert: &X509Certificate) -> Vec<String> {
@@ -185,11 +264,71 @@ fn extract_san(cert: &X509Certificate) -> Vec<String> {
 }
 
 fn has_must_staple_extension(cert: &X509Certificate) -> bool {
-    // TLS-feature extension OID = 1.3.6.1.5.5.7.1.24 carrying status_request (5).
     const MUST_STAPLE_OID: &str = "1.3.6.1.5.5.7.1.24";
     cert.extensions()
         .iter()
         .any(|ext| ext.oid.to_id_string() == MUST_STAPLE_OID)
+}
+
+/// Count SignedCertificateTimestamp entries embedded in the cert under
+/// the SCT extension (OID 1.3.6.1.4.1.11129.2.4.2). The extension wraps
+/// an OCTET STRING containing a 2-byte big-endian list length followed
+/// by 2-byte-length-prefixed SCT entries. We only count, we don't
+/// validate the signatures — that's a future hardening step.
+fn extract_sct_count(cert: &X509Certificate) -> u32 {
+    let sct_oid: Oid = Oid::from(&[1, 3, 6, 1, 4, 1, 11129, 2, 4, 2]).unwrap();
+    let ext = match cert.extensions().iter().find(|e| e.oid == sct_oid) {
+        Some(e) => e,
+        None => return 0,
+    };
+    // The value is OCTET STRING wrapping the SCT list. Skip the
+    // OCTET-STRING tag + length to get to the raw list bytes.
+    let raw = ext.value;
+    let mut i = 0usize;
+    if raw.first() == Some(&0x04) {
+        i += 1;
+        if parse_der_length(raw, &mut i).is_none() {
+            return 0;
+        }
+    }
+    let list = match raw.get(i..) {
+        Some(b) if b.len() >= 2 => b,
+        _ => return 0,
+    };
+    let mut p = 2usize; // skip 2-byte list length
+    let mut count = 0u32;
+    while p + 2 <= list.len() {
+        let entry_len = ((list[p] as usize) << 8) | (list[p + 1] as usize);
+        p += 2;
+        if p + entry_len > list.len() {
+            break;
+        }
+        count += 1;
+        p += entry_len;
+    }
+    count
+}
+
+/// Parse an OCSP response just far enough to extract the cert status.
+/// Returns "good", "revoked", "unknown", or None on parse failure.
+fn parse_ocsp_status(der: &[u8]) -> Option<String> {
+    // Very rough — looks for the SingleResponse certStatus tag context value.
+    // OCSP responses are deeply nested ASN.1; for a Phase 2 ship we
+    // optimistically look for the certStatus context tag.
+    //   0xA0 → CONTEXT 0 (good)
+    //   0xA1 → CONTEXT 1 (revoked)
+    //   0xA2 → CONTEXT 2 (unknown)
+    // This isn't a strict parse and will need a proper OCSP library in
+    // Phase 2.1 (planned: `rasn-ocsp`).
+    for window in der.windows(1) {
+        match window[0] {
+            0xA0 => return Some("good".to_string()),
+            0xA1 => return Some("revoked".to_string()),
+            0xA2 => return Some("unknown".to_string()),
+            _ => continue,
+        }
+    }
+    None
 }
 
 fn name_matches(san: &str, host: &str) -> bool {

@@ -14,21 +14,28 @@
 - [x] Release pipeline scaffold
 - [x] Homebrew formula at cybrium-ai/homebrew-cli
 
-## v0.2.0 — first production-ready pass
+## v0.2.0 — first production-ready pass (shipped)
 
-- [ ] **Raw protocol enumeration** — send minimal ClientHello for SSLv2 / SSLv3 / TLS 1.0 / TLS 1.1 over a TcpStream; parse ServerHello / Alert; emit `TLS-SSLV2` / `TLS-SSLV3` / `TLS-WEAK-VERSION-1.0` / `TLS-WEAK-VERSION-1.1` correctly. Currently every legacy version reports `supported: false` because rustls won't negotiate them.
+Shipped:
+- [x] **TLS 1.0 / 1.1 detection** — raw ClientHello probe over TcpStream (`src/scan/legacy_proto.rs`). Verified against `google.com` which still negotiates both for compat.
+- [x] **SCT extraction** — counts SCTs from cert extension OID 1.3.6.1.4.1.11129.2.4.2 (`src/scan/cert.rs::extract_sct_count`).
+- [x] **Cert field naming** — OID-to-name lookup for sig algorithm + public key algorithm (`src/scan/oid_names.rs`); proper EC curve bit lengths via curve OID; RSA modulus bits from DER walker (no longer reports 520 for P-256).
+- [x] **`cy-tls bulk`** — bounded-concurrency fan-out with JSONL streaming (`src/bulk.rs`).
+- [x] **`cy-tls verify-preload`** — curated lookup of high-traffic preloaded apexes with subdomain inheritance (`src/preload.rs`); wired into `headers.hsts.in_preload_list`.
+
+## v0.2.1 — Phase 2 finish-line
+
+- [ ] **SSLv2 / SSLv3 raw probes** — extend `legacy_proto.rs` with the older record layer + ClientHello.v2 dialect. Rare in 2026 but completes the catalog.
 - [ ] **Cipher suite enumeration** — bisection over cipher_suites list per protocol version. Populates `protocols.tls12.ciphers` and `protocols.tls13.ciphers` properly.
 - [ ] **Weak-cipher findings** — RC4 / 3DES / NULL / EXPORT / Anonymous / CBC-without-EtM detection from the enumerated list.
 - [ ] **Key exchange detection** — DHE param bits (Logjam), DHE common-prime check against the known snowden list, ECDHE curves + preferred curve.
-- [ ] **OCSP stapling** — parse CertificateStatus message from the handshake; populate `ocsp_stapled` + `ocsp_status` truthfully.
-- [ ] **SCT extraction** — parse SCT from cert extension OID 1.3.6.1.4.1.11129.2.4.2, from OCSP, and from TLS extension 18; populate `sct_count`.
+- [ ] **OCSP stapling** — rustls 0.23 needs a custom certificate verifier to capture the stapled response; planned via `rasn-ocsp` for the status decode.
+- [ ] **Full Chromium HSTS preload trie** — embed `transport_security_state_static.json` at build time and walk the trie. Replaces the v0.2.0 curated apex list.
 - [ ] **TLS 1.3 0-RTT** — send PSK + early_data extension; check ServerHello + EncryptedExtensions for acceptance.
 - [ ] **Renegotiation probe** — send client-initiated rehandshake over an already-established TLS 1.2 connection; emit `TLS-CLIENT-RENEG-ALLOWED` if accepted.
 - [ ] **Compression / heartbeat detection** — parse extensions block of ServerHello.
 - [ ] **ROBOT** — send malformed RSA ClientKeyExchange and watch for differentiable error vs valid response.
 - [ ] **DROWN** — cross-protocol check: same cert+IP serving SSLv2 anywhere on the network.
-- [ ] **Chromium HSTS preload trie** — embed `transport_security_state_static.json` at build time; populate `headers.hsts.in_preload_list`. Implements `cy-tls verify-preload`.
-- [ ] **`cy-tls bulk`** — bounded-concurrency fan-out over `--targets-file`, JSONL streaming.
 - [ ] **End-to-end test against badssl.com** — every BadSSL fixture host emits the expected finding(s).
 
 ## v0.3.0 — Qualys-class grading + scoring (the SSL Labs bar)

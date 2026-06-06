@@ -5,12 +5,14 @@
 
 mod connect;
 mod protocol;
+mod legacy_proto;
 mod cert;
 mod cipher;
 mod extensions;
 mod tls13;
 mod headers;
 mod timing;
+mod oid_names;
 
 use std::path::PathBuf;
 use std::time::Duration;

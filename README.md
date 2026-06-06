@@ -14,13 +14,13 @@ every stable finding ID. The "deep" probes (cipher bisection, raw
 ServerHello extension parsing, OCSP/SCT extraction, ROBOT/DROWN,
 Chromium preload trie) are stubbed for Phase 2 — see `TODO.md`.
 
-| Subcommand | v0.1.0 status |
-|------------|---------------|
-| `cy-tls scan` | TCP reach + TLS 1.2/1.3 handshake + cert hygiene + HSTS headers + findings + JSON/JSONL/SARIF output |
+| Subcommand | Status |
+|------------|--------|
+| `cy-tls scan` | TLS 1.0 / 1.1 / 1.2 / 1.3 detection, cert hygiene with proper sig-algo + key-bit + SCT count, HSTS headers + preload lookup, findings + JSON/JSONL/SARIF |
+| `cy-tls bulk` | Bounded-concurrency fan-out from `--targets-file`, JSONL streaming |
+| `cy-tls verify-preload` | Curated apex lookup (v0.2.0); full Chromium trie in v0.2.1 |
 | `cy-tls gui`  | Loopback web UI with Cybrium branding, scan form, findings table |
 | `cy-tls mcp`  | Model Context Protocol server over stdio (`cy_tls_scan` tool exposed to Claude / MCP agents) |
-| `cy-tls bulk` | Stub — returns "scheduled for v0.2.0" |
-| `cy-tls verify-preload` | Stub — same |
 
 ## Install
 

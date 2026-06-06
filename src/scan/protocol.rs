@@ -82,6 +82,8 @@ pub async fn enumerate(
     let mut report = ProtocolSupport::default();
 
     let hello_start = std::time::Instant::now();
+
+    // Modern path via rustls — gets us TLS 1.2 and TLS 1.3 cleanly.
     if let Ok((negotiated_version, suite)) = try_handshake(target, &host_str, deadline).await {
         match negotiated_version {
             NegotiatedVersion::Tls13 => {
@@ -94,8 +96,18 @@ pub async fn enumerate(
             }
         }
     }
-    timings.client_hello = hello_start.elapsed().as_millis() as u64;
 
+    // Legacy versions via raw ClientHello. rustls 0.23 explicitly drops
+    // TLS 1.0 and TLS 1.1 support so we hand-roll a probe per version.
+    // We use a short-per-probe deadline (cap each at 3s) so a slow
+    // legacy probe doesn't dominate scan latency.
+    let per_probe = deadline.min(Duration::from_secs(3));
+    report.tls10.supported =
+        super::legacy_proto::probe_version(target, &host_str, 0x03, 0x01, per_probe).await;
+    report.tls11.supported =
+        super::legacy_proto::probe_version(target, &host_str, 0x03, 0x02, per_probe).await;
+
+    timings.client_hello = hello_start.elapsed().as_millis() as u64;
     Ok(report)
 }
 

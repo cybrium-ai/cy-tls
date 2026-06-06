@@ -89,9 +89,9 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
                 info.hsts.preload = true;
             }
         }
-        // TODO Phase 2 — populate in_preload_list from embedded
-        // Chromium preload list (currently always false; the spec'd
-        // verify-preload subcommand exposes the same check standalone).
+        // Chromium HSTS preload status — uses the embedded curated
+        // set in `src/preload.rs` (v0.2.0). Full trie ships in v0.2.1.
+        info.hsts.in_preload_list = crate::preload::is_preloaded(host).is_some();
     }
 
     if response.header("expect-ct").is_some() {
