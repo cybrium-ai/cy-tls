@@ -1,6 +1,6 @@
 # cy-tls finding ID catalog
 
-The 37 stable finding IDs cy-tls will emit. These IDs **MUST NOT** be
+The 38 stable finding IDs cy-tls will emit. These IDs **MUST NOT** be
 renamed across cy-tls releases — the platform's `cytls_runner.py`
 enrichment table keys off them for control mapping.
 
@@ -29,7 +29,7 @@ enrichment table keys off them for control mapping.
 | `TLS-NULL-CIPHER` | critical | NULL cipher accepted |
 | `TLS-EXPORT-CIPHER` | critical | EXPORT-grade cipher accepted (FREAK) |
 | `TLS-ANON-CIPHER` | critical | Anonymous DH/ECDH cipher accepted |
-| `TLS-CBC-MAC-THEN-ENCRYPT` | medium | CBC ciphers without EtM extension (Lucky13) |
+| `TLS-CBC-MAC-THEN-ENCRYPT` | medium | TLS 1.0 + CBC accepted — BEAST surface |
 
 ## Key exchange
 
@@ -74,12 +74,13 @@ enrichment table keys off them for control mapping.
 | `TLS-COMPRESSION-ENABLED` | high | TLS-level compression enabled (CRIME) |
 | `TLS-HEARTBEAT-ENABLED` | medium | Heartbeat extension offered (Heartbleed surface) |
 
-## Padding oracle / cross-protocol
+## Padding oracle / cross-protocol — eligibility AND active probes
 
 | ID | Default severity | Description |
 |----|------------------|-------------|
-| `TLS-ROBOT-VULNERABLE` | critical | RSA padding oracle (ROBOT) detected |
-| `TLS-DROWN-VULNERABLE` | critical | Server shares cert with SSLv2 server (DROWN) |
+| `TLS-ROBOT-VULNERABLE` | critical | RSA padding oracle (ROBOT) — eligibility detected via RSA cipher acceptance |
+| `TLS-DROWN-VULNERABLE` | critical | SSLv2 enabled on the same host — DROWN attack surface |
+| `TLS-HEARTBLEED` | critical | Heartbleed (CVE-2014-0160) — server leaks memory via heartbeat over-read (**active probe**) |
 
 ## HSTS
 
@@ -98,4 +99,5 @@ enrichment table keys off them for control mapping.
 
 ---
 
-**Total: 37 finding IDs in v0.1.0.**
+**Total: 38 finding IDs in v0.2.18.** TLS-HEARTBLEED was added in v0.2.14
+for the active over-read probe.
