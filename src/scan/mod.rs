@@ -8,6 +8,7 @@ mod protocol;
 mod legacy_proto;
 mod cipher_enum;
 mod session;
+mod tls12_features;
 mod cert;
 mod cipher;
 mod extensions;
@@ -146,6 +147,22 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Re
         let s = session::probe(target, host_str, timeout).await;
         extensions.session_ticket.offered = s.tls13_psk || s.tls12_ticket;
         extensions.session_resumption = Some(s);
+    }
+
+    // TLS 1.2 ServerHello extension parse — renegotiation_info,
+    // heartbeat, compression. One extra handshake but cheap.
+    if !skip_cipher_enum {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let f = tls12_features::probe(target, host_str, timeout).await;
+        if let Some(s) = f.secure_renegotiation {
+            extensions.renegotiation.secure = s;
+        }
+        if let Some(c) = f.compression_offered {
+            extensions.compression.offered = c;
+        }
+        if let Some(h) = f.heartbeat_offered {
+            extensions.heartbeat.offered = h;
+        }
     }
     extensions.contribute_findings(target, &mut findings);
 
