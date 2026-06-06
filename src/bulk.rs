@@ -49,6 +49,7 @@ async fn scan_one(target: String, timeout: Duration, fast: bool) -> ScanReport {
         targets_file: None,
         timeout_seconds: timeout.as_secs(),
         no_cipher_enum: fast,
+        handshake_sim: false,
         format: crate::cli::OutputFormat::Json,
     };
     scan::run_to_reports(args)
@@ -70,6 +71,7 @@ fn failed_report(target: String) -> ScanReport {
         headers: Default::default(),
         timings_ms: Default::default(),
         findings: vec![crate::finding::make("TLS-UNREACHABLE", &target, "Scan internal error")],
+        handshake_simulation: Vec::new(),
     }
 }
 

@@ -197,6 +197,7 @@ async fn run_scan(args: &Value) -> Result<Value, JsonRpcError> {
         targets_file: None,
         timeout_seconds: args.get("timeout_seconds").and_then(|v| v.as_u64()).unwrap_or(30),
         no_cipher_enum:  args.get("no_cipher_enum").and_then(|v| v.as_bool()).unwrap_or(false),
+        handshake_sim:   args.get("handshake_sim").and_then(|v| v.as_bool()).unwrap_or(false),
         format: crate::cli::OutputFormat::Json,
     };
 

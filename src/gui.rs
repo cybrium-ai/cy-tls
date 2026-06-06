@@ -89,6 +89,7 @@ async fn api_scan(
         targets_file: None,
         timeout_seconds: req.timeout_seconds,
         no_cipher_enum: req.no_cipher_enum,
+        handshake_sim: false,
         format: crate::cli::OutputFormat::Json,
     };
 

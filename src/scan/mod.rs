@@ -9,6 +9,7 @@ mod legacy_proto;
 mod cipher_enum;
 mod session;
 mod tls12_features;
+mod handshake_sim;
 mod cert;
 mod cipher;
 mod extensions;
@@ -38,6 +39,10 @@ pub struct ScanReport {
     pub headers:      headers::HeaderInfo,
     pub timings_ms:   timing::Timings,
     pub findings:     Vec<Finding>,
+    /// Per-client handshake simulation results. Empty unless the user
+    /// passes `--handshake-sim` (because it adds 30 handshakes per host).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub handshake_simulation: Vec<handshake_sim::ClientSim>,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -58,7 +63,7 @@ pub async fn run_to_reports(args: ScanArgs) -> Result<Vec<ScanReport>> {
     let mut reports = Vec::with_capacity(targets.len());
     for target in targets {
         let parsed = parse_target(&target);
-        match scan_one(&parsed, timeout, args.no_cipher_enum).await {
+        match scan_one(&parsed, timeout, args.no_cipher_enum, args.handshake_sim).await {
             Ok(report) => reports.push(report),
             Err(e) => {
                 tracing::error!(target = %parsed, error = %e, "scan failed");
@@ -69,7 +74,7 @@ pub async fn run_to_reports(args: ScanArgs) -> Result<Vec<ScanReport>> {
     Ok(reports)
 }
 
-async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Result<ScanReport> {
+async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_handshake_sim: bool) -> Result<ScanReport> {
     let start = std::time::Instant::now();
     let mut findings = Vec::new();
     let mut timings = timing::Timings::default();
@@ -170,6 +175,16 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Re
     let headers = headers::fetch(target, timeout).unwrap_or_default();
     headers.contribute_findings(target, &mut findings);
 
+    // Handshake simulation matrix — opt-in (--handshake-sim). Emulates
+    // 30 reference clients (browsers, Java, OpenSSL) and reports what
+    // each negotiates. Adds ~30 handshakes per host.
+    let handshake_simulation = if do_handshake_sim {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        handshake_sim::simulate_all(target, host_str, timeout).await
+    } else {
+        Vec::new()
+    };
+
     let elapsed_ms = start.elapsed().as_millis() as u64;
     Ok(ScanReport {
         target: target.into(),
@@ -182,6 +197,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Re
         headers,
         timings_ms: timings,
         findings,
+        handshake_simulation,
     })
 }
 
@@ -225,6 +241,7 @@ fn stub_report(target: String, ip: Option<String>, elapsed_ms: u64, findings: Ve
         headers: headers::HeaderInfo::default(),
         timings_ms: timing::Timings::default(),
         findings,
+        handshake_simulation: Vec::new(),
     }
 }
 

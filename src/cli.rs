@@ -49,6 +49,12 @@ pub struct ScanArgs {
     #[arg(long)]
     pub no_cipher_enum: bool,
 
+    /// Run the handshake simulation — emulate 30 reference clients
+    /// (browsers, mobile OSes, Java, OpenSSL). Adds ~30 handshakes per
+    /// host so off by default.
+    #[arg(long)]
+    pub handshake_sim: bool,
+
     /// Output format.
     #[arg(long, value_enum, default_value = "json")]
     pub format: OutputFormat,
