@@ -1,98 +1,94 @@
 # cy-tls — Cybrium SSL/TLS posture scanner
 
 Fast Rust scanner that runs the full TLS posture probe in-process. No
-container start-up tax, JSONL streaming for bulk scans, Chromium HSTS
-preload-list lookup built-in.
+container start-up tax, JSONL streaming for bulk scans, embedded
+Chromium HSTS preload lookup, MCP server for AI agents, web UI with
+Cybrium-branded reports.
 
 Built as the canonical SSL/TLS engine for the Cybrium platform,
 replacing the Docker / K8s-jobbed sslyze pipeline.
 
 ## Status
 
-**v0.1.0 — scaffold.** Compiles, runs, emits valid output, lays out
-every stable finding ID. The "deep" probes (cipher bisection, raw
-ServerHello extension parsing, OCSP/SCT extraction, ROBOT/DROWN,
-Chromium preload trie) are stubbed for Phase 2 — see `TODO.md`.
+| Version | Highlights |
+|---------|-----------|
+| **v0.2.4** | CSV + HTML export, GUI download buttons, `/api/export` endpoint |
+| v0.2.3 | In-shell secret guards in release pipeline |
+| v0.2.0 | TLS 1.0/1.1 raw probes, SCT extraction, cert field overhaul, `cy-tls bulk`, `cy-tls verify-preload` |
+| v0.1.1 | `cy-tls gui` (Cybrium-branded local UI), `cy-tls mcp` (Model Context Protocol server) |
+| v0.1.0 | Scaffold — TCP + TLS 1.2/1.3, cert hygiene, HSTS, 37 stable finding IDs |
 
-| Subcommand | Status |
-|------------|--------|
-| `cy-tls scan` | TLS 1.0 / 1.1 / 1.2 / 1.3 detection, cert hygiene with proper sig-algo + key-bit + SCT count, HSTS headers + preload lookup, findings + JSON/JSONL/SARIF |
+| Subcommand | What it does |
+|------------|--------------|
+| `cy-tls scan` | Full posture probe — TLS 1.0/1.1/1.2/1.3 detection, cert hygiene with proper sig-algo + key-bit + SCT count, HSTS + preload lookup |
 | `cy-tls bulk` | Bounded-concurrency fan-out from `--targets-file`, JSONL streaming |
-| `cy-tls verify-preload` | Curated apex lookup (v0.2.0); full Chromium trie in v0.2.1 |
-| `cy-tls gui`  | Loopback web UI with Cybrium branding, scan form, findings table |
-| `cy-tls mcp`  | Model Context Protocol server over stdio (`cy_tls_scan` tool exposed to Claude / MCP agents) |
+| `cy-tls verify-preload` | Curated apex lookup with subdomain inheritance |
+| `cy-tls gui` | Loopback web UI with Cybrium branding, scan form, 5-format export |
+| `cy-tls mcp` | Model Context Protocol server over stdio — exposes `cy_tls_scan` to Claude / Cline / Continue |
 
 ## Install
 
-### From source
-
 ```sh
-cargo install --git https://github.com/cybrium-ai/cy-tls
+brew install cybrium-ai/cli/cy-tls          # macOS + Linux
+scoop install cybrium-ai/cy-tls             # Windows (signed binary)
+cargo install --git https://github.com/cybrium-ai/cy-tls  # any platform
 ```
 
-### Homebrew (planned)
+Or grab a binary directly from the [releases page](https://github.com/cybrium-ai/cy-tls/releases).
 
-```sh
-brew install cybrium-ai/tap/cy-tls
-```
-
-### Binary releases
-
-Each tag publishes signed `linux-{amd64,arm64}`, `darwin-{amd64,arm64}`,
-and `windows-amd64` binaries to the GitHub Releases page.
+See [`docs/installation.md`](docs/installation.md) for full details including manual install and signature verification.
 
 ## Quick start
 
 ```sh
-# Web UI (loopback HTTP server, default port 8992)
-cy-tls gui                          # opens your browser at http://127.0.0.1:8992
-cy-tls gui --no-open --port 9000    # for headless / Docker
-
-# Use as an MCP server (Claude Desktop, Cline, Continue, etc.)
-cy-tls mcp                          # speaks JSON-RPC 2.0 on stdio
-
-# Single host
+# Single host (default: JSON output)
 cy-tls scan example.com
 
-# Explicit port
-cy-tls scan example.com:8443
+# Multiple hosts, CSV for a spreadsheet
+cy-tls scan example.com cybrium.ai chase.com --format csv > findings.csv
 
-# Multiple targets, JSON output
-cy-tls scan example.com cybrium.ai chase.com > scan.json
+# Standalone HTML report (Cybrium-branded, emails cleanly)
+cy-tls scan example.com --format html > report.html
+open report.html
 
-# Plain text host list, SARIF for CI
-cy-tls scan --targets-file hosts.txt --format sarif > scan.sarif
+# SARIF for GitHub code-scanning ingestion
+cy-tls scan example.com --format sarif > scan.sarif
+
+# Bulk JSONL stream from a host list
+cy-tls bulk --targets-file hosts.txt --concurrency 64 > fleet.jsonl
+
+# HSTS preload status
+cy-tls verify-preload chase.com
+
+# Local web UI (auto-opens browser at http://127.0.0.1:8992)
+cy-tls gui
+
+# MCP server (for Claude Desktop / Cline / Continue)
+cy-tls mcp
 ```
 
-Output for one host (abbreviated):
+## Output formats
 
-```json
-[
-  {
-    "target":     "example.com:443",
-    "ip":         "93.184.216.34",
-    "elapsed_ms": 1247,
-    "protocols": {
-      "tls12": { "supported": true, "ciphers": ["..."] },
-      "tls13": { "supported": true, "ciphers": ["..."], "zero_rtt_accepted": false }
-    },
-    "certificate": { "subject": "CN=example.com", "...": "..." },
-    "findings": [
-      { "id": "TLS-WEAK-VERSION-1.1", "severity": "high", "title": "TLS 1.1 accepted", "...": "..." }
-    ]
-  }
-]
-```
+5 formats, all produced from the same scan data:
+
+| Format | Use case | CLI | GUI |
+|--------|----------|-----|-----|
+| **JSON** | Default — pipeline machine output | `--format json` | `[JSON]` button |
+| **JSONL** | Streaming, log pipelines, one-line-per-target | `--format jsonl` | `[JSONL]` button |
+| **SARIF** | CI/CD ingestion (GitHub / GitLab code-scanning) | `--format sarif` | `[SARIF]` button |
+| **CSV** | Spreadsheet analysis — one row per finding | `--format csv` | `[CSV]` button |
+| **HTML** | Cybrium-branded report — self-contained, shareable | `--format html` | `[HTML]` button |
+
+Full schema + per-format details in [`docs/export-formats.md`](docs/export-formats.md).
 
 ## Finding catalog
 
-37 stable finding IDs covering protocol, cipher, key exchange,
-certificate hygiene, OCSP/SCT, TLS 1.3 surface, padding-oracle
-families, and HTTP security headers. Full table in
-[`docs/finding-ids.md`](docs/finding-ids.md).
+37 stable finding IDs covering protocol, cipher, key exchange, certificate
+hygiene, OCSP/SCT, TLS 1.3 surface, padding-oracle families, and HTTP
+security headers. Full catalog in [`docs/finding-ids.md`](docs/finding-ids.md).
 
-Each ID is keyed to NIST 800-53, PCI DSS 4.0, ISO 27001, OWASP ASVS,
-and CIS Benchmark controls — see [`docs/control-mapping.md`](docs/control-mapping.md).
+Each ID maps to NIST 800-53, PCI DSS 4.0, ISO 27001, OWASP ASVS, and CIS
+Benchmark controls — see [`docs/control-mapping.md`](docs/control-mapping.md).
 
 ## Integration with the Cybrium platform
 
@@ -105,32 +101,33 @@ in the platform repo. The runner:
    sslyze-compatible `{findings, ssl_results}` shape used by the
    rest of the platform.
 3. If missing or non-JSON, falls back to the legacy sslyze Docker /
-   K8s path. Single `ScanToolRun` row per phase, relabel-on-fallback —
-   identical pattern to cymail / checkdmarc.
+   K8s path. Single `ScanToolRun` row per phase, relabel-on-fallback.
 
-This means **the platform is already cy-tls-ready**; this binary
-landing on `$PATH` is the only switch needed for the upgrade.
+The platform is cy-tls-ready; landing the binary on `$PATH` is the only
+switch needed for the upgrade.
 
-## Output schema
+## Use cy-tls as an MCP tool
 
-See [`docs/json-schema.md`](docs/json-schema.md) for the canonical
-shape. The schema is additive — new fields are safe; existing fields
-will not be renamed inside a major version.
+cy-tls exposes a Model Context Protocol server over stdio, so Claude
+Desktop, Cline, Continue, and other MCP-aware agents can run scans as a
+tool. See [`docs/mcp.md`](docs/mcp.md) for the Claude Desktop config and
+example agent prompts.
 
-## Build
+## Build from source
 
 ```sh
 cargo build --release
 ./target/release/cy-tls scan example.com
 ```
 
-CI runs on every PR (Linux + macOS + Windows, stable + beta toolchains).
+CI runs on every PR (Linux + macOS + Windows, stable toolchain). Release
+pipeline produces signed Windows binaries via Azure Trusted Signing and
+(when the Apple Org Developer ID lands) signed + notarized macOS binaries.
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+Apache-2.0. See [`LICENSE`](LICENSE).
 
 ## Security
 
-Issues and CVE reports: security@cybrium.ai (PGP key on
-[cybrium.ai/security](https://cybrium.ai/security)).
+Issues and CVE reports: security@cybrium.ai
