@@ -10,6 +10,7 @@ mod cipher_enum;
 mod session;
 mod tls12_features;
 mod handshake_sim;
+mod ocsp;
 mod cert;
 mod cipher;
 mod extensions;
@@ -99,7 +100,20 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     protocols.contribute_findings(target, &mut findings);
 
     // Certificate chain walk.
-    let certificate = cert::inspect(target, timeout, &mut timings).await.ok();
+    let mut certificate = cert::inspect(target, timeout, &mut timings).await.ok();
+
+    // OCSP stapling probe — always runs (separate cheap handshake)
+    // since it tells us whether the cert.ocsp_stapled field is
+    // populated truthfully vs the v0.1.x stub default.
+    {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let o = ocsp::probe(target, host_str, timeout).await;
+        if let Some(c) = certificate.as_mut() {
+            c.ocsp_stapled = o.stapled;
+            c.ocsp_status  = o.status;
+        }
+    }
+
     if let Some(c) = &certificate {
         c.contribute_findings(target, &mut findings);
     }
