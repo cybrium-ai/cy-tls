@@ -21,7 +21,7 @@ use serde::Serialize;
 use crate::cli::{OutputFormat, ScanArgs};
 use crate::finding::Finding;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ScanReport {
     pub target:       String,
     pub ip:           Option<String>,
@@ -36,7 +36,15 @@ pub struct ScanReport {
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
-    let mut targets = args.targets.clone();
+    let format = args.format.clone();
+    let reports = run_to_reports(args).await?;
+    emit(&reports, format)
+}
+
+/// Library entrypoint used by the GUI + MCP transports — returns the
+/// in-memory report vector instead of writing JSON to stdout.
+pub async fn run_to_reports(args: ScanArgs) -> Result<Vec<ScanReport>> {
+    let mut targets = args.targets;
     if let Some(file) = &args.targets_file {
         targets.extend(read_targets_file(file)?);
     }
@@ -53,8 +61,7 @@ pub async fn run(args: ScanArgs) -> Result<()> {
             }
         }
     }
-
-    emit(&reports, args.format)
+    Ok(reports)
 }
 
 async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool) -> Result<ScanReport> {

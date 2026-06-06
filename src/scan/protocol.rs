@@ -19,7 +19,7 @@ use rustls_pki_types::ServerName;
 use crate::finding::{make, Finding};
 use super::timing::Timings;
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct ProtocolSupport {
     pub sslv2:  VersionResult,
     pub sslv3:  VersionResult,
@@ -29,14 +29,14 @@ pub struct ProtocolSupport {
     pub tls13:  Tls13Result,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct VersionResult {
     pub supported: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ciphers: Vec<String>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Tls13Result {
     pub supported: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]

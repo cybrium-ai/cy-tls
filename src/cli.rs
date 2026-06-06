@@ -22,6 +22,13 @@ pub enum Command {
 
     /// Chromium HSTS preload list lookup.
     VerifyPreload(VerifyPreloadArgs),
+
+    /// Local web UI for browsing + running scans. Browser-served, 127.0.0.1 only.
+    Gui(GuiArgs),
+
+    /// Model Context Protocol server — JSON-RPC over stdio. Lets Claude or
+    /// other MCP-aware agents call cy-tls as a tool.
+    Mcp,
 }
 
 #[derive(Debug, Args)]
@@ -78,6 +85,17 @@ pub enum OutputFormat {
     Json,
     Jsonl,
     Sarif,
+}
+
+#[derive(Debug, Args)]
+pub struct GuiArgs {
+    /// Port to bind the embedded HTTP server. Always loopback-only.
+    #[arg(long, default_value = "8992")]
+    pub port: u16,
+
+    /// Don't open the system browser on startup.
+    #[arg(long)]
+    pub no_open: bool,
 }
 
 pub fn init_tracing(verbose: u8) {

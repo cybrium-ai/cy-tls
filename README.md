@@ -17,6 +17,8 @@ Chromium preload trie) are stubbed for Phase 2 — see `TODO.md`.
 | Subcommand | v0.1.0 status |
 |------------|---------------|
 | `cy-tls scan` | TCP reach + TLS 1.2/1.3 handshake + cert hygiene + HSTS headers + findings + JSON/JSONL/SARIF output |
+| `cy-tls gui`  | Loopback web UI with Cybrium branding, scan form, findings table |
+| `cy-tls mcp`  | Model Context Protocol server over stdio (`cy_tls_scan` tool exposed to Claude / MCP agents) |
 | `cy-tls bulk` | Stub — returns "scheduled for v0.2.0" |
 | `cy-tls verify-preload` | Stub — same |
 
@@ -42,6 +44,13 @@ and `windows-amd64` binaries to the GitHub Releases page.
 ## Quick start
 
 ```sh
+# Web UI (loopback HTTP server, default port 8992)
+cy-tls gui                          # opens your browser at http://127.0.0.1:8992
+cy-tls gui --no-open --port 9000    # for headless / Docker
+
+# Use as an MCP server (Claude Desktop, Cline, Continue, etc.)
+cy-tls mcp                          # speaks JSON-RPC 2.0 on stdio
+
 # Single host
 cy-tls scan example.com
 

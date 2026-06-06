@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>cy-tls — SSL/TLS posture scanner</title>
+<style>
+  :root {
+    --bg:         #0b0f1a;
+    --panel:      #131826;
+    --panel-2:    #1c2233;
+    --border:     #1f2638;
+    --muted:      #6b7691;
+    --fg:         #d9def0;
+    --fg-bright:  #ffffff;
+    --primary:    #6d28d9;
+    --primary-2:  #8b5cf6;
+    --critical:   #ef4444;
+    --high:       #f97316;
+    --medium:     #eab308;
+    --low:        #38bdf8;
+    --info:       #94a3b8;
+    --green:      #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg); color: var(--fg);
+    margin: 0; min-height: 100vh; line-height: 1.5;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 28px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(109,40,217,0.08), transparent);
+  }
+  header img.shield   { height: 32px; width: 32px; }
+  header img.wordmark { height: 22px; width: auto; opacity: 0.95; }
+  header .sep         { color: var(--muted); margin: 0 4px; font-size: 18px; }
+  header .toolname    { font-weight: 600; color: var(--fg-bright); letter-spacing: 0.02em; }
+  header .toolversion { color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+  header .grow        { flex: 1; }
+  header a            { color: var(--muted); text-decoration: none; font-size: 13px; }
+  header a:hover      { color: var(--fg-bright); }
+
+  main {
+    max-width: 1280px; margin: 0 auto; padding: 28px;
+    display: grid; grid-template-columns: 380px 1fr; gap: 24px;
+  }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 14px; font-size: 14px;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  }
+  label   { display: block; margin: 10px 0 6px; font-size: 13px; color: var(--muted); }
+  input, textarea, select {
+    width: 100%; background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 9px 11px; font-size: 14px; font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 80px; font-family: ui-monospace, Menlo, monospace; }
+  input:focus, textarea:focus { outline: none; border-color: var(--primary-2); }
+  .check  { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--fg); }
+  .check input[type=checkbox] { width: auto; }
+
+  button.primary {
+    width: 100%; margin-top: 16px; padding: 11px 14px;
+    background: var(--primary); color: var(--fg-bright);
+    border: 0; border-radius: 6px; font-weight: 600; font-size: 14px;
+    cursor: pointer; transition: background 0.15s;
+  }
+  button.primary:hover { background: var(--primary-2); }
+  button.primary:disabled { background: var(--panel-2); color: var(--muted); cursor: not-allowed; }
+  button.ghost {
+    margin-top: 8px; padding: 7px 12px;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 5px;
+    font-size: 12px; cursor: pointer;
+  }
+  button.ghost:hover { color: var(--fg-bright); border-color: var(--primary-2); }
+
+  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+  .tile  { text-align: center; padding: 12px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; }
+  .tile .n { font-size: 22px; font-weight: 700; color: var(--fg-bright); display: block; }
+  .tile .l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 2px; }
+  .tile.critical .n { color: var(--critical); }
+  .tile.high     .n { color: var(--high); }
+  .tile.medium   .n { color: var(--medium); }
+  .tile.low      .n { color: var(--low); }
+  .tile.info     .n { color: var(--info); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  tr:hover td { background: var(--panel-2); }
+  .sev { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .sev.critical { background: rgba(239,68,68,0.18); color: var(--critical); }
+  .sev.high     { background: rgba(249,115,22,0.18); color: var(--high); }
+  .sev.medium   { background: rgba(234,179,8,0.18);  color: var(--medium); }
+  .sev.low      { background: rgba(56,189,248,0.18); color: var(--low); }
+  .sev.info     { background: rgba(148,163,184,0.18); color: var(--info); }
+
+  .target-pill { display: inline-block; padding: 2px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--fg-bright); }
+
+  .empty {
+    padding: 64px 20px; text-align: center; color: var(--muted); font-size: 14px;
+  }
+
+  .footer { padding: 18px 28px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); text-align: center; }
+  .footer code { color: var(--fg); }
+
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <img class="shield"   src="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/logo_only.svg"   alt="Cybrium"/>
+  <img class="wordmark" src="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/cybrium_word.svg" alt="Cybrium"/>
+  <span class="sep">/</span>
+  <span class="toolname">cy-tls</span>
+  <span class="toolversion" id="version">v0.1.0</span>
+  <span class="grow"></span>
+  <a href="https://github.com/cybrium-ai/cy-tls" target="_blank">GitHub</a>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>New scan</h2>
+    <label for="targets">Targets (one per line, <code>host</code> or <code>host:port</code>)</label>
+    <textarea id="targets" placeholder="cybrium.ai&#10;example.com:443&#10;chase.com"></textarea>
+
+    <label for="timeout">Timeout (seconds)</label>
+    <input id="timeout" type="number" value="30" min="1" max="120" />
+
+    <div class="check">
+      <input type="checkbox" id="no_cipher_enum" />
+      <label for="no_cipher_enum" style="margin: 0;">Skip cipher enumeration (faster)</label>
+    </div>
+
+    <button class="primary" id="run">Run scan</button>
+    <button class="ghost"   id="clear">Clear results</button>
+  </section>
+
+  <section class="panel" id="results">
+    <h2>Findings</h2>
+    <div id="tiles" class="tiles" style="display:none">
+      <div class="tile critical"><span class="n" id="t-c">0</span><span class="l">Critical</span></div>
+      <div class="tile high"><span class="n" id="t-h">0</span><span class="l">High</span></div>
+      <div class="tile medium"><span class="n" id="t-m">0</span><span class="l">Medium</span></div>
+      <div class="tile low"><span class="n" id="t-l">0</span><span class="l">Low</span></div>
+      <div class="tile info"><span class="n" id="t-i">0</span><span class="l">Info</span></div>
+    </div>
+    <div id="content">
+      <div class="empty">Submit one or more targets to run a posture probe.</div>
+    </div>
+  </section>
+</main>
+
+<div class="footer">
+  cy-tls runs locally; targets and findings never leave <code>127.0.0.1</code> unless you export them.
+</div>
+
+<script>
+const el = (id) => document.getElementById(id);
+const $tiles = el("tiles"), $content = el("content");
+const $run = el("run"), $clear = el("clear");
+const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+
+let allReports = [];
+
+async function runScan() {
+  const targets = el("targets").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if (!targets.length) return;
+  $run.disabled = true; $run.textContent = "Scanning…";
+  try {
+    const res = await fetch("/api/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targets,
+        timeout_seconds: Number(el("timeout").value) || 30,
+        no_cipher_enum: el("no_cipher_enum").checked,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) { alert("Error: " + data.error); return; }
+    allReports.push(...(data.reports || []));
+    render();
+  } catch (e) {
+    alert("Scan failed: " + e.message);
+  } finally {
+    $run.disabled = false; $run.textContent = "Run scan";
+  }
+}
+
+function render() {
+  const findings = allReports.flatMap(r => r.findings);
+  if (!findings.length && !allReports.length) {
+    $tiles.style.display = "none";
+    $content.innerHTML = `<div class="empty">No findings — every probe passed cleanly. ✓</div>`;
+    return;
+  }
+  $tiles.style.display = "grid";
+  el("t-c").textContent = findings.filter(f => f.severity === "critical").length;
+  el("t-h").textContent = findings.filter(f => f.severity === "high").length;
+  el("t-m").textContent = findings.filter(f => f.severity === "medium").length;
+  el("t-l").textContent = findings.filter(f => f.severity === "low").length;
+  el("t-i").textContent = findings.filter(f => f.severity === "info").length;
+
+  findings.sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
+
+  $content.innerHTML = `
+    <table>
+      <thead><tr><th>Severity</th><th>Target</th><th>ID</th><th>Title</th><th>Evidence</th></tr></thead>
+      <tbody>
+        ${findings.map(f => `
+          <tr>
+            <td><span class="sev ${f.severity}">${f.severity}</span></td>
+            <td><span class="target-pill">${f.host}</span></td>
+            <td><code>${f.id}</code></td>
+            <td>${f.title}</td>
+            <td style="color: var(--muted); max-width: 320px;">${(f.evidence||"").slice(0, 80)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+$run.addEventListener("click", runScan);
+$clear.addEventListener("click", () => { allReports = []; render(); });
+</script>
+</body>
+</html>

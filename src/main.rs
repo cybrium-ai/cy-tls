@@ -16,6 +16,8 @@ mod bulk;
 mod preload;
 mod controls;
 mod error;
+mod gui;
+mod mcp;
 
 use clap::Parser;
 use cli::{Cli, Command};
@@ -36,5 +38,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Scan(args) => scan::run(args).await,
         Command::Bulk(args) => bulk::run(args).await,
         Command::VerifyPreload(args) => preload::verify(args),
+        Command::Gui(args) => gui::run(args).await,
+        Command::Mcp => mcp::run().await,
     }
 }

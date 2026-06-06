@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::finding::{make, Finding};
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct ExtensionInfo {
     pub alpn:           Vec<String>,
     pub renegotiation:  Reneg,
@@ -16,23 +16,23 @@ pub struct ExtensionInfo {
     pub session_ticket: SessionTicket,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Reneg {
     pub secure: bool,
     pub client_initiated_allowed: bool,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Compression {
     pub offered: bool,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Heartbeat {
     pub offered: bool,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct SessionTicket {
     pub offered: bool,
     pub ttl_seconds: u32,

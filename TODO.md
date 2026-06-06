@@ -2,14 +2,17 @@
 
 ## v0.1.0 (scaffold — current)
 - [x] Cargo project + workspace
-- [x] CLI scaffolding (`scan`, `bulk`, `verify-preload`)
+- [x] CLI scaffolding (`scan`, `bulk`, `verify-preload`, `gui`, `mcp`)
 - [x] 37 stable finding IDs registered with control mapping
 - [x] TCP + TLS 1.2/1.3 handshake via rustls
 - [x] Certificate parse (subject/SAN/expiry/key bits/sig algo/self-signed/must-staple)
 - [x] HSTS / Expect-CT / HPKP header probe
 - [x] JSON / JSONL / SARIF emitters
+- [x] **`cy-tls gui`** — loopback-only axum HTTP server + embedded HTML SPA with Cybrium logo/wordmark, scan form, severity tiles, findings table
+- [x] **`cy-tls mcp`** — Model Context Protocol server (JSON-RPC 2.0 over stdio) exposing `cy_tls_scan` to Claude / MCP-aware agents
 - [x] CI on Linux + macOS + Windows
 - [x] Release pipeline scaffold
+- [x] Homebrew formula at cybrium-ai/homebrew-cli
 
 ## v0.2.0 — first production-ready pass
 
@@ -28,7 +31,31 @@
 - [ ] **`cy-tls bulk`** — bounded-concurrency fan-out over `--targets-file`, JSONL streaming.
 - [ ] **End-to-end test against badssl.com** — every BadSSL fixture host emits the expected finding(s).
 
-## v0.3.0 — quality of life
+## v0.3.0 — Qualys-class grading + scoring (the SSL Labs bar)
+
+- [ ] **Letter grade** — A+ / A / B / C / D / F derived from cipher + protocol + cert + key strength following Qualys's published rubric.
+- [ ] **Trust grade** — separate from cipher grade; what is the cert chain's intrinsic trust?
+- [ ] **Handshake simulation matrix** — what would Chrome / Firefox / Safari / Edge / Java 8 / Java 11 / Android 10 / iOS 16 / Win10 / Win11 / Go / OpenSSL 1.1.1 / OpenSSL 3 actually negotiate? Render the matrix in the GUI + JSON.
+- [ ] **Forward secrecy report** — PFS enabled, partial, or absent per cipher suite.
+- [ ] **Mixed content warning** — if the host serves HTTP-only links from an HTTPS page (HEAD-fetch probe).
+- [ ] **Reused public key detection** — same SubjectPublicKeyInfo on multiple unrelated certs (compromise indicator).
+- [ ] **HSTS preload status (Phase 2 prerequisite)** — already specified, just needs the trie embed.
+- [ ] **WeakDH / Logjam (Phase 2 prerequisite)** — already specified.
+
+## v0.4.0 — TPM / device attestation
+
+- [ ] **Linux TPM 2.0** via `/dev/tpm0` + tss2-esys — emit `device.tpm` block in scan reports:
+  - `manufacturer`, `model`, `firmware_version`
+  - `ek_cert` (Endorsement Key certificate, base64)
+  - `pcr_quote` over a fresh nonce (PCRs 0-7 by default, configurable)
+  - signature over the quote with AK (Attestation Key)
+- [ ] **Windows TPM** via `Tbs.dll` (TBS = TPM Base Services) — same JSON shape.
+- [ ] **macOS Secure Enclave** via SecKey APIs — limited surface; emit what we can.
+- [ ] **No-TPM fallback** — emit `device.tpm: { available: false, reason: "..." }` cleanly.
+- [ ] **Optional `--attest` flag** — only run TPM attestation when explicitly requested; default off to keep scans fast and side-effect-free.
+- [ ] **Integration**: `cy-tls scan --attest` returns the standard report with an additional `device` block containing the TPM quote. The platform's `cytls_runner.py` enrichment unpacks this into a separate `DeviceAttestation` row for audit chain.
+
+## v0.5.0 — quality of life
 
 - [ ] DTLS support (`--proto dtls`).
 - [ ] QUIC (HTTP/3) TLS 1.3 probe (`--quic`).

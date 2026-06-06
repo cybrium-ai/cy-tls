@@ -8,14 +8,14 @@ use serde::Serialize;
 
 use crate::finding::{make, Finding};
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct HeaderInfo {
     pub hsts: Hsts,
     pub expect_ct: ExpectCt,
     pub hpkp: Hpkp,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Hsts {
     pub present: bool,
     pub max_age: u64,
@@ -24,12 +24,12 @@ pub struct Hsts {
     pub in_preload_list: bool,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct ExpectCt {
     pub present: bool,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Hpkp {
     pub present: bool,
 }

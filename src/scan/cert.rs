@@ -17,7 +17,7 @@ use x509_parser::prelude::*;
 use crate::finding::{make, Finding};
 use super::timing::Timings;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CertificateInfo {
     pub subject:             String,
     pub issuer:              String,

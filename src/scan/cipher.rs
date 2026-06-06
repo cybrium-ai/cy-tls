@@ -7,7 +7,7 @@
 use std::time::Duration;
 use serde::Serialize;
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct KeyExchangeInfo {
     pub dh_param_bits: Option<u32>,
     pub ecdhe_curves: Vec<String>,
