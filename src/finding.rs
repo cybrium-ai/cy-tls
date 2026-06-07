@@ -145,6 +145,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Cert lifetime BR cap (v0.5.13) ──────────────────────────────
     ("TLS-CERT-EXCESSIVE-LIFETIME", Severity::Medium, "Leaf certificate lifetime exceeds CA/B Forum BR §6.3.2 cap of 398 days (Apple / Chrome / Mozilla enforce this in browsers since Sep 2020) — connections from modern browsers will be rejected if the cert was issued after the cap took effect"),
+
+    // ── Cert chain depth (v0.5.17) ──────────────────────────────────
+    ("TLS-CERT-CHAIN-DEEP", Severity::Low, "Server presented more than 5 certificates in the TLS chain — typical is 2-4 (leaf + 1-3 intermediates). Deep chains indicate cross-signed sprawl, stale intermediates, or misconfig; prune to reduce handshake bandwidth and validation cost"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -198,10 +201,11 @@ mod tests {
         // TLS-HTTP2-RAPID-RESET-ELIGIBLE. v0.5.11 added
         // TLS-CT-INSUFFICIENT-DIVERSITY. v0.5.12 added
         // TLS-HTTP2-NO-HEADER-LIST-LIMIT. v0.5.13 added
-        // TLS-CERT-EXCESSIVE-LIFETIME.
+        // TLS-CERT-EXCESSIVE-LIFETIME. v0.5.17 added
+        // TLS-CERT-CHAIN-DEEP.
         assert_eq!(
             FINDING_CATALOG.len(),
-            57,
+            58,
             "FINDING_CATALOG size drifted from spec"
         );
     }

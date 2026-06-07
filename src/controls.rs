@@ -147,6 +147,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "Chromium Root Program Policy",
         ],
 
+        // ── Cert chain depth (v0.5.17) ──────────────────────────────
+        "TLS-CERT-CHAIN-DEEP" => vec!["NIST 800-53 SC-17", "RFC 5280 §6"],
+
         _ => vec![],
     }
 }

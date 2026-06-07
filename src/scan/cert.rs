@@ -34,6 +34,11 @@ pub struct CertificateInfo {
     /// for RSA / Ed25519 / DSA.
     pub ec_curve: Option<String>,
     pub chain_complete: bool,
+    /// v0.5.17 — number of certificates the server presented in its
+    /// chain (leaf + intermediates). Empty / 1 → bare leaf; 2-4 →
+    /// typical; >5 → deep chain (cross-signed sprawl, redundant
+    /// intermediates, or misconfig).
+    pub chain_length: u32,
     pub self_signed: bool,
     pub ev: bool,
     pub must_staple: bool,
@@ -92,6 +97,21 @@ impl CertificateInfo {
                 "TLS-CHAIN-INCOMPLETE",
                 host,
                 "Server did not present full intermediate chain",
+            ));
+        }
+        // v0.5.17 — deep chain sanity. Typical leaf+1-3 intermediates
+        // is normal; >5 usually indicates a cross-signed sprawl, a
+        // stale intermediate left in place after a CA migration, or a
+        // misconfig. Browsers fold the chain at validation time so
+        // the user-visible impact is bandwidth + handshake-latency.
+        if self.chain_length > 5 {
+            findings.push(make(
+                "TLS-CERT-CHAIN-DEEP",
+                host,
+                format!(
+                    "Server presented {} certificates in the chain — typical chains are 2-4. Often indicates cross-signed sprawl or a stale intermediate left in place after a CA migration; prune the chain to reduce handshake bandwidth.",
+                    self.chain_length,
+                ),
             ));
         }
         let sig_lower = self.signature_algorithm.to_lowercase();
@@ -201,7 +221,7 @@ pub async fn inspect(
         .ok_or_else(|| anyhow::anyhow!("empty cert chain"))?;
     // Stapled OCSP from rustls 0.23 requires a custom certificate verifier
     // to intercept; deferred to v0.2.1 ("OCSP via rasn-ocsp" item in TODO).
-    let mut info = parse_leaf(leaf_der.as_ref(), chain.len() > 1, None)?;
+    let mut info = parse_leaf(leaf_der.as_ref(), chain.len() as u32, None)?;
 
     // v0.5.16 — active OCSP query when the responder URL is published
     // and we have an issuer cert in the chain. The result populates
@@ -255,9 +275,10 @@ async fn active_ocsp_query(
 
 fn parse_leaf(
     der: &[u8],
-    chain_has_intermediates: bool,
+    chain_length: u32,
     stapled_ocsp: Option<&[u8]>,
 ) -> anyhow::Result<CertificateInfo> {
+    let chain_has_intermediates = chain_length > 1;
     let (_, cert) =
         X509Certificate::from_der(der).map_err(|e| anyhow::anyhow!("DER parse failed: {e}"))?;
     let tbs = &cert.tbs_certificate;
@@ -297,6 +318,7 @@ fn parse_leaf(
         key_bits,
         ec_curve,
         chain_complete: chain_has_intermediates || self_signed,
+        chain_length,
         self_signed,
         ev: has_ev_policy_oid(&cert),
         must_staple,
