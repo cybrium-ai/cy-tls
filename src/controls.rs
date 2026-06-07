@@ -117,6 +117,11 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "CVE-2014-1295",
         ],
 
+        // ── HTTP/2 ALPN posture (v0.5.5) ────────────────────────────
+        "TLS-H2C-UPGRADE-ACCEPTED" => {
+            vec!["NIST 800-53 SC-8", "OWASP ASVS 14.4.1", "RFC 7540 §3.4"]
+        }
+
         _ => vec![],
     }
 }

@@ -130,6 +130,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Triple Handshake / Extended Master Secret (v0.5.2) ──────────
     ("TLS-NO-EXTENDED-MASTER-SECRET", Severity::Medium, "Server does not support the Extended Master Secret extension (RFC 7627, ext 0x0017) — Triple Handshake (CVE-2014-1295) cross-session key reuse is possible"),
+
+    // ── HTTP/2 ALPN posture (v0.5.5) ────────────────────────────────
+    ("TLS-H2C-UPGRADE-ACCEPTED", Severity::Medium, "Server inside the TLS tunnel accepted an HTTP/1.1 Upgrade: h2c request with 101 Switching Protocols — typically indicates a reverse-proxy / TLS-terminator misconfig that allows protocol smuggling between the front-end and an h2c-capable backend"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -179,9 +182,10 @@ mod tests {
         // TLS-SYMANTEC-DISTRUSTED-CA. v0.4.5 added TLS-LUCKY13-LIKELY.
         // v0.5.0 added TLS-GOLDENDOODLE-ACTIVE. v0.5.1 added
         // TLS-BREACH-ELIGIBLE. v0.5.2 added TLS-NO-EXTENDED-MASTER-SECRET.
+        // v0.5.5 added TLS-H2C-UPGRADE-ACCEPTED.
         assert_eq!(
             FINDING_CATALOG.len(),
-            52,
+            53,
             "FINDING_CATALOG size drifted from spec"
         );
     }

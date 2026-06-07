@@ -15,6 +15,7 @@ mod fallback_scsv;
 mod forward_secrecy;
 mod handshake_sim;
 mod headers;
+mod http2_posture;
 mod legacy_proto;
 mod ocsp;
 mod oid_names;
@@ -469,6 +470,25 @@ async fn scan_one(
     // HSTS / Expect-CT headers.
     let headers = headers::fetch(target, timeout).unwrap_or_default();
     headers.contribute_findings(target, &mut findings);
+
+    // v0.5.5 — HTTP/2 ALPN posture: h2c upgrade probe. Sends an
+    // HTTP/1.1 Upgrade: h2c request inside the TLS tunnel; a server
+    // that responds with 101 Switching Protocols is misconfigured —
+    // typically a reverse proxy that forwards Upgrade headers to an
+    // h2c-capable backend, exposing protocol smuggling.
+    {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        if matches!(
+            http2_posture::probe(target, host_str, timeout).await,
+            http2_posture::H2cVerdict::Accepted
+        ) {
+            findings.push(crate::finding::make(
+                "TLS-H2C-UPGRADE-ACCEPTED",
+                target,
+                "Server returned 101 Switching Protocols in response to an HTTP/1.1 Upgrade: h2c request sent inside the TLS tunnel — TLS-terminator / reverse-proxy misconfig. Likely allows protocol smuggling between the front-end and an h2c-capable backend.",
+            ));
+        }
+    }
 
     // Server-header fingerprint — one extra HEAD request, cheap.
     let server_fingerprint = {
