@@ -1,13 +1,11 @@
 //! TLS 1.2 record-layer crypto for active oracle probes.
 //!
-//! v0.3.7: dormant stub. The functions here (PRF, master / key-block
+//! v0.4.0: wired into `vuln_padding_oracle_active` for the
+//! end-to-end CVE-2016-2107 active probe. PRF, master / key-block
 //! derivation, AES-CBC + HMAC-SHA1 record encryption with deliberate
-//! MAC / padding corruption) are the building blocks of a future
-//! active CVE-2016-2107 / GOLDENDOODLE probe that walks the record
-//! layer end-to-end. They compile cleanly but are not yet wired into
-//! the orchestrator — v0.3.7 ships the fingerprint-confirmed upgrade
-//! to the existing eligibility-tier finding; the full record-layer
-//! probe is v0.4.x work.
+//! MAC / padding corruption — the active probe drives a real TLS 1.2
+//! handshake using cipher 0x002f, derives keys, then sends two
+//! corrupt records and compares the alerts.
 //!
 //! Scope (when wired): AES-128-CBC with HMAC-SHA1 (cipher suite
 //! 0x002f — TLS_RSA_WITH_AES_128_CBC_SHA). The simplest of the CBC
@@ -16,6 +14,10 @@
 //!
 //! Wire format reference: RFC 5246 §6.2.3.2 (GenericBlockCipher).
 
+// derive_master_secret + derive_key_block + encrypt_record_with_corruption
+// are used by vuln_padding_oracle_active; tls12_prf is the unit-tested
+// inner helper they share. KeyBlock fields beyond client_write_* are
+// reserved for the symmetric server-side variant (v0.4.x+).
 #![allow(dead_code)]
 
 use hmac::{Hmac, Mac};

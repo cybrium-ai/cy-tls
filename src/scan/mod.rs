@@ -17,6 +17,7 @@ mod vuln_goldendoodle;
 mod vuln_ccs;
 mod vuln_ticketbleed;
 mod vuln_padding_oracle;
+mod vuln_padding_oracle_active;
 mod vuln_robot;
 mod tls12_crypto;
 mod server_fingerprint;
@@ -368,32 +369,60 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     };
 
     // OpenSSL AES-NI padding oracle (CVE-2016-2107) finding emission —
-    // emit ONE of two messages keyed on the server-banner OpenSSL
-    // version we just observed:
-    //   • fingerprint-confirmed verdict: TLS 1.2 + CBC accepted AND
-    //     OpenSSL banner < 1.0.1t / 1.0.2h → high-confidence finding,
-    //     explicit version called out as evidence.
-    //   • eligibility-tier: TLS 1.2 + CBC accepted but no banner /
-    //     non-OpenSSL banner / OpenSSL banner ≥ fix → existing
-    //     eligibility-tier message.
+    // tiered detection:
+    //   1. (v0.4.0) Active record-layer probe runs against ANY server
+    //      that accepted cipher 0x002f (TLS_RSA_WITH_AES_128_CBC_SHA).
+    //      Drives a real TLS 1.2 handshake, derives keys, sends two
+    //      corrupt records and compares alerts.  Vulnerable verdict
+    //      becomes a high-confidence finding.
+    //   2. (v0.3.7) When the active probe can't run end-to-end and the
+    //      server-header fingerprint reveals a vulnerable OpenSSL
+    //      banner, emit a fingerprint-confirmed verdict instead.
+    //   3. (v0.3.2) Otherwise emit the eligibility-tier message.
     if !cbc_for_padding_oracle.is_empty() {
-        let confirmed = server_fingerprint.as_ref()
-            .map(|fp| fp.openssl_vulnerable_padding_oracle)
-            .unwrap_or(false);
-        if confirmed {
-            let openssl_v = server_fingerprint.as_ref()
-                .and_then(|fp| fp.openssl_version.as_deref())
-                .unwrap_or("?");
-            findings.push(crate::finding::make(
-                "TLS-OPENSSL-PADDING-ORACLE",
-                target,
-                format!(
-                    "Server banner advertises OpenSSL/{openssl_v} — predates the CVE-2016-2107 fix (1.0.1t / 1.0.2h, May 2016). TLS 1.2 + CBC suite{} accepted on this endpoint. AES-NI padding-oracle plaintext recovery is feasible.",
-                    if cbc_for_padding_oracle.len() == 1 { "" } else { "s" },
-                ),
-            ));
+        let aes128_cbc_sha_accepted = cbc_for_padding_oracle.iter().any(|s| *s == 0x002f);
+
+        let active_verdict = if aes128_cbc_sha_accepted {
+            let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+            Some(vuln_padding_oracle_active::probe(target, host_str, timeout).await)
         } else {
-            vuln_padding_oracle::contribute_findings(target, &cbc_for_padding_oracle, &mut findings);
+            None
+        };
+
+        match active_verdict {
+            Some(vuln_padding_oracle_active::OracleVerdict::Vulnerable) => {
+                findings.push(crate::finding::make(
+                    "TLS-OPENSSL-PADDING-ORACLE",
+                    target,
+                    "Active record-layer probe confirmed CVE-2016-2107: server returned distinct alert types for invalid-MAC vs invalid-padding records (bad_record_mac for valid-padding case, decrypt_error for invalid-padding case). AES-NI padding-oracle plaintext recovery is feasible.",
+                ));
+            }
+            Some(vuln_padding_oracle_active::OracleVerdict::NotVulnerable) => {
+                // Active probe ran and gave a clean bill — suppress
+                // both fingerprint-tier and eligibility-tier findings.
+            }
+            _ => {
+                // Active probe couldn't run (NotApplicable / Indeterminate)
+                // — fall back to fingerprint or eligibility tier.
+                let confirmed = server_fingerprint.as_ref()
+                    .map(|fp| fp.openssl_vulnerable_padding_oracle)
+                    .unwrap_or(false);
+                if confirmed {
+                    let openssl_v = server_fingerprint.as_ref()
+                        .and_then(|fp| fp.openssl_version.as_deref())
+                        .unwrap_or("?");
+                    findings.push(crate::finding::make(
+                        "TLS-OPENSSL-PADDING-ORACLE",
+                        target,
+                        format!(
+                            "Server banner advertises OpenSSL/{openssl_v} — predates the CVE-2016-2107 fix (1.0.1t / 1.0.2h, May 2016). TLS 1.2 + CBC suite{} accepted; active probe couldn't run end-to-end. AES-NI padding-oracle plaintext recovery is feasible.",
+                            if cbc_for_padding_oracle.len() == 1 { "" } else { "s" },
+                        ),
+                    ));
+                } else {
+                    vuln_padding_oracle::contribute_findings(target, &cbc_for_padding_oracle, &mut findings);
+                }
+            }
         }
     }
 
