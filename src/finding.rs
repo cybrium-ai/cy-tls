@@ -115,6 +115,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     // ── Renegotiation + deprecated trust hardening (v0.4.2) ─────────
     ("TLS-INSECURE-RENEG-LEGACY", Severity::High, "Server does not advertise renegotiation_info extension — legacy CVE-2009-3555 plaintext-injection surface"),
     ("TLS-HPKP-PRESENT",          Severity::Info, "Public-Key-Pins header present (HPKP is deprecated and ignored by modern browsers — informational only)"),
+
+    // ── Distrusted CA chains (v0.4.3) ───────────────────────────────
+    ("TLS-SYMANTEC-DISTRUSTED-CA", Severity::High, "Leaf certificate is issued by a Symantec-era CA family distrusted by Chrome / Firefox since 2018 — connections from modern browsers will fail"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -160,7 +163,8 @@ mod tests {
         // v0.3.1 added TLS-TICKETBLEED; v0.3.2 added TLS-OPENSSL-PADDING-ORACLE;
         // v0.3.6 added TLS-CBC-ORACLE-FAMILY-FP. v0.4.1 added TLS-CIPHER-CLIENT-PREFERENCE-ONLY,
         // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV. v0.4.2 added
-        // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT.
-        assert_eq!(FINDING_CATALOG.len(), 47, "FINDING_CATALOG size drifted from spec");
+        // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT. v0.4.3 added
+        // TLS-SYMANTEC-DISTRUSTED-CA.
+        assert_eq!(FINDING_CATALOG.len(), 48, "FINDING_CATALOG size drifted from spec");
     }
 }

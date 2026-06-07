@@ -92,6 +92,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             // Deprecated — informational only, no compliance mapping.
         ],
 
+        // ── Distrusted CA chains (v0.4.3) ───────────────────────────
+        "TLS-SYMANTEC-DISTRUSTED-CA" => vec![
+            "NIST 800-53 SC-17",
+            "CA/B Forum Baseline Requirements §1.6",
+            "Mozilla Root Store Policy 2.7",
+            "Chromium Root Program Policy",
+        ],
+
         _ => vec![],
     }
 }

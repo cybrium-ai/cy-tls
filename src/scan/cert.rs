@@ -77,6 +77,25 @@ impl CertificateInfo {
         if self.sct_count == 0 {
             findings.push(make("TLS-SCT-MISSING", host, "No SCTs in cert"));
         }
+
+        // v0.4.3 — Symantec-era distrusted CA heuristic. Chrome 70 +
+        // Firefox 63 (Sep–Oct 2018) removed trust from all
+        // Symantec-controlled root certs (Symantec, GeoTrust, Thawte,
+        // RapidSSL, and certain VeriSign brands) per the 2017 PKI
+        // distrust agreement. Certs still chaining through those
+        // issuer DNs fail in every modern browser. DigiCert acquired
+        // the Symantec PKI business in late 2017 — new DigiCert-
+        // branded issuers are fine; only the legacy issuer DNs trip.
+        if let Some(matched) = symantec_era_issuer_match(&self.issuer) {
+            findings.push(make(
+                "TLS-SYMANTEC-DISTRUSTED-CA",
+                host,
+                format!(
+                    "Issuer DN matches the {matched} family — distrusted by Chrome 70 / Firefox 63 since October 2018. Modern browsers will refuse this cert. Issuer: {}",
+                    self.issuer,
+                ),
+            ));
+        }
         if self.must_staple && !self.ocsp_stapled {
             findings.push(make(
                 "TLS-MUST-STAPLE-VIOLATED",
@@ -344,4 +363,86 @@ fn split_host_port(target: &str) -> anyhow::Result<(String, u16)> {
         .rsplit_once(':')
         .ok_or_else(|| anyhow::anyhow!("target must be host:port"))?;
     Ok((h.to_string(), p.parse()?))
+}
+
+/// Heuristic match against the 2018-distrusted CA families. Returns the
+/// family name when the issuer DN string contains one of the known
+/// brand names. Case-insensitive — Issuer DNs in the wild use varied
+/// casing ("thawte" vs "Thawte" vs "THAWTE").
+///
+/// Important: this matches by ISSUER name, so DigiCert-branded certs
+/// that replaced the old Symantec issuer entries are unaffected — only
+/// the original Symantec-PKI issuer DNs trip the finding. False
+/// positives are theoretically possible if some other CA uses a
+/// similar brand string in their DN, but no current public CA does.
+pub fn symantec_era_issuer_match(issuer: &str) -> Option<&'static str> {
+    let lower = issuer.to_ascii_lowercase();
+    // Order: most-specific tokens first so we report the right family.
+    if lower.contains("rapidssl")  { return Some("RapidSSL"); }
+    if lower.contains("geotrust")  { return Some("GeoTrust"); }
+    if lower.contains("thawte")    { return Some("Thawte"); }
+    if lower.contains("verisign")  { return Some("VeriSign"); }
+    if lower.contains("symantec")  { return Some("Symantec"); }
+    None
+}
+
+#[cfg(test)]
+mod symantec_distrust_tests {
+    use super::symantec_era_issuer_match;
+
+    #[test]
+    fn matches_symantec() {
+        assert_eq!(
+            symantec_era_issuer_match("CN=Symantec Class 3 Secure Server CA - G4, O=Symantec Corporation, C=US"),
+            Some("Symantec"),
+        );
+    }
+
+    #[test]
+    fn matches_geotrust_case_insensitive() {
+        assert_eq!(
+            symantec_era_issuer_match("CN=GEOTRUST Primary Certification Authority - G3"),
+            Some("GeoTrust"),
+        );
+    }
+
+    #[test]
+    fn matches_thawte() {
+        assert_eq!(
+            symantec_era_issuer_match("CN=thawte Primary Root CA - G3, OU=\"(c) 2008 thawte, Inc. - For authorized use only\""),
+            Some("Thawte"),
+        );
+    }
+
+    #[test]
+    fn matches_verisign() {
+        assert_eq!(
+            symantec_era_issuer_match("CN=VeriSign Class 3 Public Primary Certification Authority - G5"),
+            Some("VeriSign"),
+        );
+    }
+
+    #[test]
+    fn matches_rapidssl() {
+        assert_eq!(
+            symantec_era_issuer_match("CN=RapidSSL SHA256 CA"),
+            Some("RapidSSL"),
+        );
+    }
+
+    #[test]
+    fn does_not_match_digicert() {
+        assert_eq!(
+            symantec_era_issuer_match("CN=DigiCert SHA2 Secure Server CA, O=DigiCert Inc, C=US"),
+            None,
+        );
+    }
+
+    #[test]
+    fn does_not_match_lets_encrypt() {
+        assert_eq!(
+            symantec_era_issuer_match("CN=R3, O=Let's Encrypt, C=US"),
+            None,
+        );
+    }
 }
