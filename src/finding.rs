@@ -157,6 +157,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Cert serial entropy (v0.5.21) ───────────────────────────────
     ("TLS-CERT-WEAK-SERIAL-ENTROPY", Severity::Medium, "Cert serial has < 64 bits of entropy — CA/B Forum BR §7.1 requires ≥64 bits of CA-generated entropy. Short / sequential serials are a Symantec-era footgun (prohibited industry-wide in 2016) and break browser chain-validation heuristics"),
+
+    // ── Basic Constraints CA-bit (v0.5.22) ──────────────────────────
+    ("TLS-CERT-LEAF-IS-CA", Severity::Critical, "Leaf certificate has BasicConstraints cA: TRUE — end-entity certs MUST NOT have this flag set per RFC 5280 §4.2.1.9; allowing it means the leaf could sign sub-certs that chain to the same root. Catastrophic misissuance pattern (Comodo 2008, ANSSI 2013)"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -214,10 +217,11 @@ mod tests {
         // TLS-CERT-CHAIN-DEEP. v0.5.18 added
         // TLS-CERT-DANGEROUS-WILDCARD. v0.5.19 added
         // TLS-CERT-MISSING-SERVER-AUTH-EKU. v0.5.21 added
-        // TLS-CERT-WEAK-SERIAL-ENTROPY.
+        // TLS-CERT-WEAK-SERIAL-ENTROPY. v0.5.22 added
+        // TLS-CERT-LEAF-IS-CA.
         assert_eq!(
             FINDING_CATALOG.len(),
-            61,
+            62,
             "FINDING_CATALOG size drifted from spec"
         );
     }

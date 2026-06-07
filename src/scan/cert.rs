@@ -74,6 +74,11 @@ pub struct CertificateInfo {
     /// publicly-trusted CA-issued certs to carry ≥64 bits of
     /// CA-generated entropy in the serial.
     pub serial_entropy_bits: u32,
+    /// v0.5.22 — leaf cert's Basic Constraints cA bit (RFC 5280
+    /// §4.2.1.9, OID 2.5.29.19). FALSE / absent is correct for an
+    /// end-entity cert; TRUE is catastrophic (leaf could sign
+    /// sub-certs).
+    pub basic_constraints_ca: bool,
 }
 
 impl CertificateInfo {
@@ -153,6 +158,13 @@ impl CertificateInfo {
                 "TLS-CERT-MISSING-SERVER-AUTH-EKU",
                 host,
                 "Leaf cert Extended Key Usage does not include id-kp-serverAuth (1.3.6.1.5.5.7.3.1) — CA/B Forum BR §7.1.2.7 requires this for publicly-trusted TLS server certs; modern browsers reject leafs that lack it.",
+            ));
+        }
+        if self.basic_constraints_ca && !self.self_signed {
+            findings.push(make(
+                "TLS-CERT-LEAF-IS-CA",
+                host,
+                "Leaf certificate has BasicConstraints cA: TRUE — this is an end-entity cert that the CA also marked as a CA. The leaf could in theory sign sub-certs that browsers might trust through it. Catastrophic misissuance per RFC 5280 §4.2.1.9.",
             ));
         }
         if self.serial_entropy_bits < 64 {
@@ -352,6 +364,7 @@ fn parse_leaf(
     let has_server_auth_eku = has_extended_key_usage_server_auth(&cert);
     let crl_distribution_points = extract_crl_distribution_points(&cert);
     let serial_entropy_bits = serial_entropy_bits(tbs.raw_serial());
+    let basic_constraints_ca = basic_constraints_ca_bit(&cert);
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -380,6 +393,7 @@ fn parse_leaf(
         has_server_auth_eku,
         crl_distribution_points,
         serial_entropy_bits,
+        basic_constraints_ca,
         ocsp_stapled,
         ocsp_status,
     })
@@ -532,6 +546,23 @@ fn has_extended_key_usage_server_auth(cert: &X509Certificate) -> bool {
     // constraints + key usage. We treat absence as "OK" rather than
     // emit a false positive on legacy chains.
     true
+}
+
+/// True when the cert's BasicConstraints extension (RFC 5280 §4.2.1.9,
+/// OID 2.5.29.19) has cA: TRUE. End-entity certs (leafs) MUST NOT
+/// have this flag set; intermediates / roots MUST set it.
+fn basic_constraints_ca_bit(cert: &X509Certificate) -> bool {
+    use x509_parser::extensions::ParsedExtension;
+    for ext in cert.extensions() {
+        if let ParsedExtension::BasicConstraints(bc) = ext.parsed_extension() {
+            return bc.ca;
+        }
+    }
+    // Absent extension = treat as cA: FALSE per RFC 5280 §4.2.1.9
+    // ("if the basic constraints extension is not present in a
+    // certificate ... then the certified public key MUST NOT be used
+    // to verify certificate signatures").
+    false
 }
 
 /// Calculate the entropy bits in a cert serial number. The raw_serial

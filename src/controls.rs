@@ -171,6 +171,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "RFC 5280 §4.1.2.2",
         ],
 
+        // ── Basic Constraints CA-bit (v0.5.22) ──────────────────────
+        "TLS-CERT-LEAF-IS-CA" => vec![
+            "NIST 800-53 SC-17",
+            "CA/B Forum BR §7.1.2.7",
+            "RFC 5280 §4.2.1.9",
+        ],
+
         _ => vec![],
     }
 }
