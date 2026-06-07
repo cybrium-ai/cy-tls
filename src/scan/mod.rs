@@ -14,6 +14,7 @@ mod dh_params;
 mod extensions;
 mod fallback_scsv;
 mod forward_secrecy;
+mod grease;
 mod handshake_sim;
 mod headers;
 mod http2_posture;
@@ -84,6 +85,11 @@ pub struct ScanReport {
     /// Empty / omitted when no CAA published.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub caa_records: Vec<String>,
+    /// v0.5.28 — RFC 8701 GREASE tolerance. True when the server
+    /// correctly ignores RFC-reserved GREASE cipher_suite values in
+    /// the ClientHello (modern, expected). False when the server
+    /// breaks the handshake on GREASE or echoes a GREASE value back.
+    pub tolerates_grease: bool,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -722,8 +728,19 @@ async fn scan_one(
     let mut forward_secrecy_bucket: Option<&'static str> = None;
     let mut fallback_scsv_status: Option<&'static str> = None;
 
+    let mut tolerates_grease = false;
     if !skip_cipher_enum {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+
+        // v0.5.28 — RFC 8701 GREASE tolerance.
+        tolerates_grease = grease::probe(target, host_str, timeout).await;
+        if !tolerates_grease {
+            findings.push(crate::finding::make(
+                "TLS-GREASE-INTOLERANT",
+                target,
+                "Server rejected a ClientHello containing RFC 8701 GREASE cipher_suite values, or picked a GREASE value back. Indicates a brittle TLS stack that violates the 'ignore unknown values' rule and will break when new cipher suites / extensions roll out.",
+            ));
+        }
 
         // Cipher preference.
         match cipher_pref::probe(target, host_str, timeout).await {
@@ -819,6 +836,7 @@ async fn scan_one(
         forward_secrecy: forward_secrecy_bucket,
         fallback_scsv: fallback_scsv_status,
         caa_records,
+        tolerates_grease,
     })
 }
 
@@ -873,6 +891,7 @@ fn stub_report(
         forward_secrecy: None,
         fallback_scsv: None,
         caa_records: Vec::new(),
+        tolerates_grease: false,
     }
 }
 

@@ -172,6 +172,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── HSTS preload eligibility (v0.5.27) ──────────────────────────
     ("HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED", Severity::Info, "Host meets hstspreload.org submission requirements (max-age ≥ 1yr + includeSubDomains + preload directive) but is not on the Chromium preload list. Submitting locks in HSTS from the first browser visit instead of waiting for the trust-on-first-use header to arrive"),
+
+    // ── GREASE intolerance (v0.5.28) ────────────────────────────────
+    ("TLS-GREASE-INTOLERANT", Severity::Low, "Server rejected a ClientHello containing RFC 8701 GREASE cipher_suite values OR picked a GREASE value back — brittle TLS stack that violates the 'ignore unknown values' rule. Will break when new cipher suites or extensions roll out"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -233,10 +236,11 @@ mod tests {
         // TLS-CERT-LEAF-IS-CA. v0.5.23 added TLS-CERT-NO-AKI.
         // v0.5.24 added TLS-CERT-NOT-YET-VALID. v0.5.25 added
         // TLS-CERT-CN-ONLY. v0.5.27 added
-        // HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED.
+        // HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED. v0.5.28 added
+        // TLS-GREASE-INTOLERANT.
         assert_eq!(
             FINDING_CATALOG.len(),
-            66,
+            67,
             "FINDING_CATALOG size drifted from spec"
         );
     }

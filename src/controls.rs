@@ -194,6 +194,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "hstspreload.org submission criteria",
         ],
 
+        // ── GREASE intolerance (v0.5.28) ────────────────────────────
+        "TLS-GREASE-INTOLERANT" => vec!["RFC 8701", "Chromium TLS implementation policy"],
+
         _ => vec![],
     }
 }
