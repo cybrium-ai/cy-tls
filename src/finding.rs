@@ -181,6 +181,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── AIA caIssuers reachability (v0.5.31) ────────────────────────
     ("TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE", Severity::Low, "Cert's AIA caIssuers URL is published but unreachable via HTTP HEAD — AIA-walking clients (those without the issuer cert pinned) can't fetch the missing intermediate, breaking chain validation"),
+
+    // ── OCSP URL scheme (v0.5.38) ───────────────────────────────────
+    ("TLS-OCSP-URL-HTTPS-SCHEME", Severity::Low, "OCSP responder URL uses https:// — RFC 6960 §A.1 recommends http:// to avoid the OCSP-over-OCSP loop where the OCSP query itself would need an OCSP-validated cert for the responder"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -245,10 +248,11 @@ mod tests {
         // HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED. v0.5.28 added
         // TLS-GREASE-INTOLERANT. v0.5.29 added
         // TLS-CERT-CHAIN-MISORDERED. v0.5.31 added
-        // TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE.
+        // TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE. v0.5.38 added
+        // TLS-OCSP-URL-HTTPS-SCHEME.
         assert_eq!(
             FINDING_CATALOG.len(),
-            69,
+            70,
             "FINDING_CATALOG size drifted from spec"
         );
     }

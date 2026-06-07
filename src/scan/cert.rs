@@ -201,6 +201,21 @@ impl CertificateInfo {
                 ),
             ));
         }
+        // v0.5.38 — OCSP responder URLs SHOULD be plain http:// per
+        // RFC 6960 §A.1. Using https:// invites a chicken-and-egg
+        // OCSP-over-OCSP loop because the OCSP query itself would
+        // need an OCSP-validated cert for the responder.
+        if let Some(url) = self.ocsp_responder_url.as_deref() {
+            if url.to_ascii_lowercase().starts_with("https://") {
+                findings.push(make(
+                    "TLS-OCSP-URL-HTTPS-SCHEME",
+                    host,
+                    format!(
+                        "OCSP responder URL uses https:// scheme: {url}. RFC 6960 §A.1 recommends http:// to avoid the OCSP-over-OCSP chicken-and-egg loop where the OCSP query needs an OCSP-validated cert for the responder."
+                    ),
+                ));
+            }
+        }
         let sig_lower = self.signature_algorithm.to_lowercase();
         if sig_lower.contains("sha1") || sig_lower.contains("md5") {
             findings.push(make(
