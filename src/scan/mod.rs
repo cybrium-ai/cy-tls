@@ -25,6 +25,7 @@ mod timing;
 mod tls12_crypto;
 mod tls12_features;
 mod tls13;
+mod tls13_0rtt;
 mod vuln_ccs;
 mod vuln_goldendoodle;
 mod vuln_goldendoodle_active;
@@ -166,6 +167,16 @@ async fn scan_one(
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         let p = pqc::probe(target, host_str, timeout).await;
         protocols.pqc = Some(p);
+    }
+
+    // v0.5.3 — TLS 1.3 0-RTT (early-data) acceptance. Two-handshake
+    // rustls probe: first handshake warms the resumption cache,
+    // second handshake enables early_data and writes a HEAD request
+    // into the early-data slot. is_early_data_accepted() decides.
+    // Only meaningful when TLS 1.3 is supported.
+    if protocols.tls13.supported {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        protocols.tls13.zero_rtt_accepted = tls13_0rtt::probe(target, host_str, timeout).await;
     }
 
     if let Some(c) = &certificate {

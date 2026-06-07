@@ -121,7 +121,7 @@ impl ProtocolSupport {
             findings.push(make(
                 "TLS-ZERO-RTT-ACCEPTED",
                 host,
-                "TLS 1.3 early-data ticket accepted",
+                "Two-handshake rustls 0-RTT probe: second-handshake's is_early_data_accepted() returned true — server accepts replayed early-data flights. Any state-changing request sent in 0-RTT can be captured by a network attacker and resubmitted; mitigation must be enforced at the application layer (idempotent-only routes, anti-replay nonces, etc.).",
             ));
         }
     }

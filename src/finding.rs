@@ -82,7 +82,7 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("TLS-MUST-STAPLE-VIOLATED", Severity::High,     "Cert has must-staple but stapling not offered"),
 
     // ── TLS 1.3 surface ─────────────────────────────────────────────
-    ("TLS-ZERO-RTT-ACCEPTED", Severity::Medium, "TLS 1.3 0-RTT early-data accepted on state-changing endpoint"),
+    ("TLS-ZERO-RTT-ACCEPTED", Severity::Medium, "TLS 1.3 0-RTT early-data accepted — any state-changing request sent in the early-data flight is exposed to replay-attack capture-and-resubmit unless mitigated app-side"),
 
     // ── Renegotiation / compression / heartbeat ─────────────────────
     ("TLS-CLIENT-RENEG-ALLOWED", Severity::High,   "Insecure client-initiated renegotiation accepted"),
