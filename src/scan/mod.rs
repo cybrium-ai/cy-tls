@@ -6,6 +6,7 @@
 mod cert;
 mod cipher;
 mod cipher_enum;
+mod cipher_enum_tls13;
 mod cipher_pref;
 mod connect;
 mod dh_params;
@@ -195,6 +196,21 @@ async fn scan_one(
     // extra handshakes per host.
     if !skip_cipher_enum {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+
+        // v0.5.4 — TLS 1.3 cipher enumeration via raw ClientHello
+        // bisection. Only runs when the rustls modern-path already
+        // confirmed TLS 1.3 is supported. Five-suite menu, ~5
+        // handshakes worst case.
+        if protocols.tls13.supported {
+            let tls13_accepted = cipher_enum_tls13::enumerate(target, host_str, timeout).await;
+            for suite_id in &tls13_accepted {
+                let name = cipher_enum_tls13::name(*suite_id);
+                if !protocols.tls13.ciphers.iter().any(|c| c == name) && name != "UNKNOWN" {
+                    protocols.tls13.ciphers.push(name.to_string());
+                }
+            }
+        }
+
         let accepted_at_12 = cipher_enum::enumerate_at_version(
             target,
             host_str,

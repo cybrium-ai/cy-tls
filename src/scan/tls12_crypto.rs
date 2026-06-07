@@ -102,12 +102,19 @@ pub fn derive_key_block(
 
     // 20 + 20 + 16 + 16 = 72 bytes for AES-128-CBC + HMAC-SHA1.
     let kb = tls12_prf(master, b"key expansion", &seed, 72);
-
-    let mut kb_iter = kb.chunks_exact(20);
-    let client_mac = kb_iter.next().unwrap();
-    let server_mac = kb_iter.next().unwrap();
-    let rest = kb_iter.remainder();
-    let (client_key, server_key) = rest.split_at(16);
+    // Direct slice indexing — chunks_exact(20).remainder() returns the
+    // leftover after ALL possible 20-byte chunks, not what's left after
+    // .next() calls. With kb.len() == 72 there are 3 full chunks (60
+    // bytes) and a 12-byte remainder, NOT a 32-byte remainder. Sliced
+    // by offset:
+    //   bytes 0..20   client_write_mac_key
+    //   bytes 20..40  server_write_mac_key
+    //   bytes 40..56  client_write_key
+    //   bytes 56..72  server_write_key
+    let client_mac = &kb[0..20];
+    let server_mac = &kb[20..40];
+    let client_key = &kb[40..56];
+    let server_key = &kb[56..72];
 
     let mut out = KeyBlock {
         client_write_mac_key: [0u8; 20],
