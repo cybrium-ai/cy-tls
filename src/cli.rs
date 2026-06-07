@@ -3,10 +3,35 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "cy-tls", version, about = "Cybrium SSL/TLS posture scanner")]
+// Disable the clap auto-generated --version flag so we can rebind
+// `-v`/`--version` ourselves (clap's default is `-V` short for
+// version; lowercase `-v` was previously the verbose-count short).
+// Most users reach for `cy-tls -v` expecting the version; the
+// verbose log-level escalation is barely used (init_tracing reads
+// `--verbose` once at startup).
+#[command(
+    name = "cy-tls",
+    version,
+    about = "Cybrium SSL/TLS posture scanner",
+    disable_version_flag = true
+)]
 pub struct Cli {
-    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    /// Bump tracing log level. Repeat for more (`--verbose --verbose`).
+    #[arg(long, global = true, action = clap::ArgAction::Count)]
     pub verbose: u8,
+
+    /// Print version and exit.
+    #[arg(
+        short = 'v',
+        long = "version",
+        global = true,
+        action = clap::ArgAction::Version,
+    )]
+    _version: (),
+
+    /// Print version and exit (Rust-convention capital-V alias).
+    #[arg(short = 'V', global = true, action = clap::ArgAction::Version)]
+    _version_upper: (),
 
     #[command(subcommand)]
     pub command: Command,
