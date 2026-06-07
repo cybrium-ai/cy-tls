@@ -1,6 +1,6 @@
 [package]
 name        = "cy-tls"
-version     = "0.2.1"
+version     = "0.3.7"
 edition     = "2021"
 rust-version = "1.75"
 description = "Cybrium SSL/TLS posture scanner — full probe suite, JSONL streaming, HSTS preload lookup."
@@ -70,6 +70,15 @@ hex          = "0.4"
 # because it enforces correct padding)
 num-bigint   = "0.4"
 num-traits   = "0.2"
+
+# TLS 1.2 record-layer crypto for post-handshake active probes
+# (GOLDENDOODLE / Zombie POODLE / OpenSSL AES-NI padding oracle).
+# Build our own handshake state machine so we can inject deliberately
+# malformed application-data records that rustls would otherwise refuse.
+aes          = "0.8"
+cbc          = { version = "0.1", features = ["block-padding"] }
+hmac         = "0.12"
+sha1         = "0.10"
 
 [dev-dependencies]
 pretty_assertions = "1"

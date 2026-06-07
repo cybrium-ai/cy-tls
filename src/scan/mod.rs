@@ -18,6 +18,7 @@ mod vuln_ccs;
 mod vuln_ticketbleed;
 mod vuln_padding_oracle;
 mod vuln_robot;
+mod tls12_crypto;
 mod server_fingerprint;
 mod dh_params;
 mod cert;
@@ -93,6 +94,13 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     let start = std::time::Instant::now();
     let mut findings = Vec::new();
     let mut timings = timing::Timings::default();
+
+    // Padding-oracle eligibility — populated in the cipher-enum block
+    // when TLS 1.2 + CBC ciphers are accepted, then resolved into a
+    // finding AFTER the server-header fingerprint runs (so we can
+    // emit a fingerprint-confirmed verdict when we see an unfixed
+    // OpenSSL banner — see CVE-2016-2107 in server_fingerprint.rs).
+    let mut cbc_for_padding_oracle: Vec<u16> = Vec::new();
 
     let connect_start = std::time::Instant::now();
     let ip = match connect::resolve_and_connect(target, timeout).await {
@@ -254,10 +262,12 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
             .collect();
         vuln_goldendoodle::contribute_findings(target, &cbc_accepted, &mut findings);
 
-        // OpenSSL AES-NI padding oracle (CVE-2016-2107) eligibility —
-        // shares the same TLS 1.2 + CBC surface as GOLDENDOODLE but
-        // tracks the OpenSSL-specific fix population separately.
-        vuln_padding_oracle::contribute_findings(target, &cbc_accepted, &mut findings);
+        // OpenSSL AES-NI padding oracle (CVE-2016-2107) — defer the
+        // emission until AFTER the server-header fingerprint runs so
+        // we can emit a fingerprint-confirmed verdict when an unfixed
+        // OpenSSL banner is observed. Stash the eligibility signal in
+        // a flag for the orchestrator's tail section.
+        cbc_for_padding_oracle = cbc_accepted.clone();
 
         // BEAST eligibility — TLS 1.0 with any CBC cipher exposes the
         // record-layer chosen-plaintext attack (BEAST, CVE-2011-3389).
@@ -356,6 +366,36 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         let fp = server_fingerprint::classify(raw.as_deref());
         if fp.raw.is_none() { None } else { Some(fp) }
     };
+
+    // OpenSSL AES-NI padding oracle (CVE-2016-2107) finding emission —
+    // emit ONE of two messages keyed on the server-banner OpenSSL
+    // version we just observed:
+    //   • fingerprint-confirmed verdict: TLS 1.2 + CBC accepted AND
+    //     OpenSSL banner < 1.0.1t / 1.0.2h → high-confidence finding,
+    //     explicit version called out as evidence.
+    //   • eligibility-tier: TLS 1.2 + CBC accepted but no banner /
+    //     non-OpenSSL banner / OpenSSL banner ≥ fix → existing
+    //     eligibility-tier message.
+    if !cbc_for_padding_oracle.is_empty() {
+        let confirmed = server_fingerprint.as_ref()
+            .map(|fp| fp.openssl_vulnerable_padding_oracle)
+            .unwrap_or(false);
+        if confirmed {
+            let openssl_v = server_fingerprint.as_ref()
+                .and_then(|fp| fp.openssl_version.as_deref())
+                .unwrap_or("?");
+            findings.push(crate::finding::make(
+                "TLS-OPENSSL-PADDING-ORACLE",
+                target,
+                format!(
+                    "Server banner advertises OpenSSL/{openssl_v} — predates the CVE-2016-2107 fix (1.0.1t / 1.0.2h, May 2016). TLS 1.2 + CBC suite{} accepted on this endpoint. AES-NI padding-oracle plaintext recovery is feasible.",
+                    if cbc_for_padding_oracle.len() == 1 { "" } else { "s" },
+                ),
+            ));
+        } else {
+            vuln_padding_oracle::contribute_findings(target, &cbc_for_padding_oracle, &mut findings);
+        }
+    }
 
     // GOLDENDOODLE / Zombie POODLE high-confidence finding — fires
     // when TLS 1.2 + CBC is accepted AND the server fingerprint matches
