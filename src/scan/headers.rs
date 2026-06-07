@@ -13,6 +13,13 @@ pub struct HeaderInfo {
     pub hsts: Hsts,
     pub expect_ct: ExpectCt,
     pub hpkp: Hpkp,
+    /// v0.5.32 — modern feature-policy header (replaced
+    /// Feature-Policy in Chrome 88). Browsers honour it for camera,
+    /// mic, geolocation, payment, etc. gating. Informational —
+    /// present-or-absent doesn't drive a finding; the raw value is
+    /// surfaced for posture dashboards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions_policy: Option<String>,
     /// v0.5.1 — HTTP response compression detection. Populated by
     /// observing `Content-Encoding` on a regular GET. Used to emit
     /// TLS-BREACH-ELIGIBLE — BREACH (CVE-2013-3587) requires the
@@ -169,6 +176,13 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         .is_some()
     {
         info.hpkp.present = true;
+    }
+    // v0.5.32 — Permissions-Policy (or its legacy alias Feature-Policy).
+    if let Some(v) = response
+        .header("permissions-policy")
+        .or_else(|| response.header("feature-policy"))
+    {
+        info.permissions_policy = Some(v.to_string());
     }
 
     // v0.5.1 — BREACH eligibility. Observe Content-Encoding directly.
