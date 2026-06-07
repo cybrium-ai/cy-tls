@@ -81,7 +81,8 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> RobotVerdict 
         let mut classes: Vec<ResponseClass> = Vec::with_capacity(5);
         for vector in 0u8..5 {
             let ct = build_malformed_cke_ciphertext(vector, &rsa_n, &rsa_e);
-            let class = send_malformed_cke_and_observe(target, sni, &ct).await
+            let class = send_malformed_cke_and_observe(target, sni, &ct)
+                .await
                 .unwrap_or(ResponseClass::Timeout);
             classes.push(class);
         }
@@ -90,11 +91,15 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> RobotVerdict 
         //    is safe. If the control (V1, the "correct" padding) elicited
         //    a different class from any non-control vector, the oracle
         //    is leaking.
-        let unique_count: usize = classes.iter()
+        let unique_count: usize = classes
+            .iter()
             .fold(Vec::<&ResponseClass>::new(), |mut acc, c| {
-                if !acc.contains(&c) { acc.push(c); }
+                if !acc.contains(&c) {
+                    acc.push(c);
+                }
                 acc
-            }).len();
+            })
+            .len();
 
         Some(if unique_count <= 1 {
             RobotVerdict::NotVulnerable
@@ -113,7 +118,10 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> RobotVerdict 
         })
     })
     .await;
-    outcome.ok().flatten().unwrap_or(RobotVerdict::Indeterminate)
+    outcome
+        .ok()
+        .flatten()
+        .unwrap_or(RobotVerdict::Indeterminate)
 }
 
 // ── Handshake helpers ─────────────────────────────────────────────────
@@ -130,15 +138,26 @@ async fn obtain_rsa_pubkey(target: &str, sni: &str) -> Option<(BigUint, BigUint)
     let mut got_done = false;
     for _ in 0..32 {
         let mut hdr = [0u8; 5];
-        if sock.read_exact(&mut hdr).await.is_err() { break; }
-        if hdr[0] != 0x16 { return None; }
+        if sock.read_exact(&mut hdr).await.is_err() {
+            break;
+        }
+        if hdr[0] != 0x16 {
+            return None;
+        }
         let len = ((hdr[3] as usize) << 8) | (hdr[4] as usize);
         let mut body = vec![0u8; len.min(16 * 1024)];
-        if sock.read_exact(&mut body).await.is_err() { return None; }
+        if sock.read_exact(&mut body).await.is_err() {
+            return None;
+        }
         buf.extend_from_slice(&body);
-        if has_handshake_type(&buf, 0x0e) { got_done = true; break; }
+        if has_handshake_type(&buf, 0x0e) {
+            got_done = true;
+            break;
+        }
     }
-    if !got_done { return None; }
+    if !got_done {
+        return None;
+    }
 
     // Find the Certificate message (handshake type 0x0b) in the
     // accumulated stream and parse the first cert.
@@ -162,13 +181,21 @@ async fn send_malformed_cke_and_observe(
     let mut tmp = Vec::new();
     for _ in 0..32 {
         let mut hdr = [0u8; 5];
-        if sock.read_exact(&mut hdr).await.is_err() { return Some(ResponseClass::ConnectionClosed); }
-        if hdr[0] != 0x16 { return Some(ResponseClass::AlertOther(0)); }
+        if sock.read_exact(&mut hdr).await.is_err() {
+            return Some(ResponseClass::ConnectionClosed);
+        }
+        if hdr[0] != 0x16 {
+            return Some(ResponseClass::AlertOther(0));
+        }
         let len = ((hdr[3] as usize) << 8) | (hdr[4] as usize);
         let mut body = vec![0u8; len.min(16 * 1024)];
-        if sock.read_exact(&mut body).await.is_err() { return Some(ResponseClass::ConnectionClosed); }
+        if sock.read_exact(&mut body).await.is_err() {
+            return Some(ResponseClass::ConnectionClosed);
+        }
         tmp.extend_from_slice(&body);
-        if has_handshake_type(&tmp, 0x0e) { break; }
+        if has_handshake_type(&tmp, 0x0e) {
+            break;
+        }
     }
 
     // Send CKE with the crafted RSA ciphertext.
@@ -199,15 +226,15 @@ async fn send_malformed_cke_and_observe(
                 // Alert body: 1 byte level + 1 byte description.
                 let desc = body.get(1).copied().unwrap_or(0);
                 Some(match desc {
-                    20 => ResponseClass::AlertBadRecordMac,    // bad_record_mac
-                    51 => ResponseClass::AlertDecryptError,    // decrypt_error
+                    20 => ResponseClass::AlertBadRecordMac, // bad_record_mac
+                    51 => ResponseClass::AlertDecryptError, // decrypt_error
                     other => ResponseClass::AlertOther(other),
                 })
             }
             _ => Some(ResponseClass::AlertOther(hdr[0])),
         },
         Ok(Err(_)) => Some(ResponseClass::ConnectionClosed),
-        Err(_)     => Some(ResponseClass::Timeout),
+        Err(_) => Some(ResponseClass::Timeout),
     }
 }
 
@@ -250,12 +277,14 @@ fn build_rsa_only_client_hello(sni: &str) -> Vec<u8> {
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(&[0u8; 32]);
     body.push(0);
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00);
+    body.push(0x01);
+    body.push(0x00);
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -269,7 +298,8 @@ fn build_rsa_only_client_hello(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec
@@ -293,7 +323,8 @@ fn build_cke_record(rsa_ct: &[u8]) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec
@@ -303,7 +334,7 @@ fn build_cke_record(rsa_ct: &[u8]) -> Vec<u8> {
 
 /// Build a raw-RSA ciphertext for one of our 5 test vectors.
 fn build_malformed_cke_ciphertext(vector: u8, n: &BigUint, e: &BigUint) -> Vec<u8> {
-    let n_byte_len = (n.bits() as usize + 7) / 8;
+    let n_byte_len = (n.bits() as usize).div_ceil(8);
     // PKCS#1 v1.5 padded plaintext layout (for TLS RSA key exchange):
     //
     //   0x00  0x02  [PS: random non-zero bytes, n_byte_len - 51 of them]
@@ -315,15 +346,20 @@ fn build_malformed_cke_ciphertext(vector: u8, n: &BigUint, e: &BigUint) -> Vec<u
     // The premaster_secret is always TLS 1.2 version (0x03 0x03) + 46
     // random bytes — at the end of the buffer.
     let premaster_offset = n_byte_len - 48;
-    plain[premaster_offset]     = 0x03;
+    plain[premaster_offset] = 0x03;
     plain[premaster_offset + 1] = 0x03;
     for i in 0..46 {
         plain[premaster_offset + 2 + i] = 0x42 ^ (i as u8);
     }
 
     // PS region is bytes 2..premaster_offset - 1. Fill with non-zero.
-    for i in 2..(premaster_offset - 1) {
-        plain[i] = 0x42 ^ ((i as u8).wrapping_mul(3));
+    for (i, byte) in plain
+        .iter_mut()
+        .enumerate()
+        .take(premaster_offset - 1)
+        .skip(2)
+    {
+        *byte = 0x42 ^ ((i as u8).wrapping_mul(3));
     }
     // Separator 0x00 byte just before the premaster_secret.
     plain[premaster_offset - 1] = 0x00;
@@ -378,12 +414,13 @@ fn find_handshake_body(buf: &[u8], typ: u8) -> Option<Vec<u8>> {
     let mut i = 0;
     while i + 4 <= buf.len() {
         let msg_type = buf[i];
-        let msg_len = ((buf[i + 1] as usize) << 16)
-            | ((buf[i + 2] as usize) << 8)
-            | (buf[i + 3] as usize);
+        let msg_len =
+            ((buf[i + 1] as usize) << 16) | ((buf[i + 2] as usize) << 8) | (buf[i + 3] as usize);
         let start = i + 4;
         let end = start + msg_len;
-        if end > buf.len() { return None; }
+        if end > buf.len() {
+            return None;
+        }
         if msg_type == typ {
             return Some(buf[start..end].to_vec());
         }
@@ -395,11 +432,14 @@ fn find_handshake_body(buf: &[u8], typ: u8) -> Option<Vec<u8>> {
 fn has_handshake_type(body: &[u8], typ: u8) -> bool {
     let mut i = 0;
     while i + 4 <= body.len() {
-        let msg_len = ((body[i + 1] as usize) << 16)
-            | ((body[i + 2] as usize) << 8)
-            | (body[i + 3] as usize);
-        if body[i] == typ { return true; }
-        if i + 4 + msg_len > body.len() { return false; }
+        let msg_len =
+            ((body[i + 1] as usize) << 16) | ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
+        if body[i] == typ {
+            return true;
+        }
+        if i + 4 + msg_len > body.len() {
+            return false;
+        }
         i += 4 + msg_len;
     }
     false
@@ -410,13 +450,14 @@ fn has_handshake_type(body: &[u8], typ: u8) -> bool {
 ///   then one or more  certificate<0..2^24-1>  entries (3-byte each)
 /// Take the first cert, run it through x509-parser, return (n, e).
 fn parse_rsa_pubkey_from_cert_message(body: &[u8]) -> Option<(BigUint, BigUint)> {
-    if body.len() < 6 { return None; }
+    if body.len() < 6 {
+        return None;
+    }
     // Skip outer 3-byte total length.
     let mut i = 3;
     // First cert: 3-byte length, then DER.
-    let cert_len = ((body[i] as usize) << 16)
-        | ((body[i + 1] as usize) << 8)
-        | (body[i + 2] as usize);
+    let cert_len =
+        ((body[i] as usize) << 16) | ((body[i + 1] as usize) << 8) | (body[i + 2] as usize);
     i += 3;
     let cert_der = body.get(i..i + cert_len)?;
     let (_, cert) = X509Certificate::from_der(cert_der).ok()?;
@@ -435,24 +476,34 @@ fn parse_rsa_pubkey_from_cert_message(body: &[u8]) -> Option<(BigUint, BigUint)>
 fn rsa_pubkey_from_der(der: &[u8]) -> Option<(BigUint, BigUint)> {
     let mut i = 0;
     // Outer SEQUENCE
-    if *der.get(i)? != 0x30 { return None; }
+    if *der.get(i)? != 0x30 {
+        return None;
+    }
     i += 1;
     let _ = read_der_length(der, &mut i)?;
     // modulus INTEGER
-    if *der.get(i)? != 0x02 { return None; }
+    if *der.get(i)? != 0x02 {
+        return None;
+    }
     i += 1;
     let mod_len = read_der_length(der, &mut i)?;
     let mod_bytes = der.get(i..i + mod_len)?;
     i += mod_len;
     // publicExponent INTEGER
-    if *der.get(i)? != 0x02 { return None; }
+    if *der.get(i)? != 0x02 {
+        return None;
+    }
     i += 1;
     let exp_len = read_der_length(der, &mut i)?;
     let exp_bytes = der.get(i..i + exp_len)?;
 
     // Strip leading zero sign-pad if present.
     fn strip(b: &[u8]) -> &[u8] {
-        if b.first() == Some(&0x00) { &b[1..] } else { b }
+        if b.first() == Some(&0x00) {
+            &b[1..]
+        } else {
+            b
+        }
     }
     let n = BigUint::from_bytes_be(strip(mod_bytes));
     let e = BigUint::from_bytes_be(strip(exp_bytes));
@@ -462,9 +513,13 @@ fn rsa_pubkey_from_der(der: &[u8]) -> Option<(BigUint, BigUint)> {
 fn read_der_length(buf: &[u8], i: &mut usize) -> Option<usize> {
     let first = *buf.get(*i)?;
     *i += 1;
-    if first < 0x80 { return Some(first as usize); }
+    if first < 0x80 {
+        return Some(first as usize);
+    }
     let n = (first & 0x7f) as usize;
-    if n == 0 || n > 4 { return None; }
+    if n == 0 || n > 4 {
+        return None;
+    }
     let mut len = 0usize;
     for _ in 0..n {
         len = (len << 8) | (*buf.get(*i)? as usize);

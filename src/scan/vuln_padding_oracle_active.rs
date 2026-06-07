@@ -35,6 +35,7 @@ use x509_parser::prelude::*;
 use super::tls12_crypto::{derive_key_block, derive_master_secret, encrypt_record_with_corruption};
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)] // NotApplicable reserved for future RSA-kx-absent branch.
 pub enum OracleVerdict {
     NotVulnerable,
     Vulnerable,
@@ -62,11 +63,11 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> OracleVerdict
 async fn run_probe(target: &str, sni: &str) -> OracleVerdict {
     let v1 = match drive_oracle(target, sni, false).await {
         Some(a) => a,
-        None    => return OracleVerdict::Indeterminate,
+        None => return OracleVerdict::Indeterminate,
     };
     let v2 = match drive_oracle(target, sni, true).await {
         Some(a) => a,
-        None    => return OracleVerdict::Indeterminate,
+        None => return OracleVerdict::Indeterminate,
     };
 
     if matches!(v1, AlertClass::Timeout) && matches!(v2, AlertClass::Timeout) {
@@ -92,25 +93,37 @@ async fn drive_oracle(target: &str, sni: &str, corrupt_padding: bool) -> Option<
     let mut accumulated = Vec::with_capacity(8 * 1024);
     for _ in 0..32 {
         let mut hdr = [0u8; 5];
-        if sock.read_exact(&mut hdr).await.is_err() { return None; }
-        if hdr[0] == 0x15 { return Some(AlertClass::Other(0x15)); }
-        if hdr[0] != 0x16 { return None; }
+        if sock.read_exact(&mut hdr).await.is_err() {
+            return None;
+        }
+        if hdr[0] == 0x15 {
+            return Some(AlertClass::Other(0x15));
+        }
+        if hdr[0] != 0x16 {
+            return None;
+        }
         let len = ((hdr[3] as usize) << 8) | (hdr[4] as usize);
         let mut body = vec![0u8; len.min(16 * 1024)];
-        if sock.read_exact(&mut body).await.is_err() { return None; }
+        if sock.read_exact(&mut body).await.is_err() {
+            return None;
+        }
         accumulated.extend_from_slice(&body);
-        if has_handshake_type(&accumulated, 0x0e) { break; }
+        if has_handshake_type(&accumulated, 0x0e) {
+            break;
+        }
     }
 
     let server_random = parse_server_hello_random(&accumulated)?;
     let cert_body = find_handshake_body(&accumulated, 0x0b)?;
     let (n, e) = parse_rsa_pubkey_from_cert_message(&cert_body)?;
 
-    // Premaster: 0x03 0x03 || 46 random bytes.
+    // Premaster: 0x03 0x03 || 46 deterministic bytes.
     let mut premaster = [0u8; 48];
     premaster[0] = 0x03;
     premaster[1] = 0x03;
-    for i in 2..48 { premaster[i] = (i as u8).wrapping_mul(37); }
+    for (i, byte) in premaster.iter_mut().enumerate().skip(2) {
+        *byte = (i as u8).wrapping_mul(37);
+    }
 
     let cke_ct = rsa_pkcs1_v15_encrypt(&n, &e, &premaster)?;
     let cke_record = build_cke_record(&cke_ct);
@@ -129,7 +142,7 @@ async fn drive_oracle(target: &str, sni: &str, corrupt_padding: bool) -> Option<
 
     let encrypted = encrypt_record_with_corruption(
         &finished_plain,
-        0u64,            // seq_num — first encrypted record after CCS
+        0u64, // seq_num — first encrypted record after CCS
         &keys,
         true,            // corrupt_mac
         corrupt_padding, // V1 vs V2
@@ -155,7 +168,7 @@ async fn drive_oracle(target: &str, sni: &str, corrupt_padding: bool) -> Option<
             _ => Some(AlertClass::Other(hdr[0])),
         },
         Ok(Err(_)) => Some(AlertClass::ConnectionClosed),
-        Err(_)     => Some(AlertClass::Timeout),
+        Err(_) => Some(AlertClass::Timeout),
     }
 }
 
@@ -165,7 +178,9 @@ fn generate_random_32() -> [u8; 32] {
     // Deterministic across runs is fine — we're not relying on
     // unpredictability for any security property here.
     let mut out = [0u8; 32];
-    for i in 0..32 { out[i] = (i as u8).wrapping_mul(31).wrapping_add(7); }
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = (i as u8).wrapping_mul(31).wrapping_add(7);
+    }
     out
 }
 
@@ -201,12 +216,14 @@ fn build_client_hello(sni: &str, client_random: &[u8; 32]) -> Vec<u8> {
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(client_random);
     body.push(0); // session_id length
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00); // compression: null
+    body.push(0x01);
+    body.push(0x00); // compression: null
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -220,7 +237,8 @@ fn build_client_hello(sni: &str, client_random: &[u8; 32]) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec
@@ -241,7 +259,8 @@ fn build_cke_record(rsa_ct: &[u8]) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec
@@ -250,8 +269,10 @@ fn build_cke_record(rsa_ct: &[u8]) -> Vec<u8> {
 // ── RSA PKCS#1 v1.5 encrypt (valid padding) ─────────────────────────
 
 fn rsa_pkcs1_v15_encrypt(n: &BigUint, e: &BigUint, m: &[u8]) -> Option<Vec<u8>> {
-    let n_byte_len = (n.bits() as usize + 7) / 8;
-    if m.len() > n_byte_len.saturating_sub(11) { return None; }
+    let n_byte_len = (n.bits() as usize).div_ceil(8);
+    if m.len() > n_byte_len.saturating_sub(11) {
+        return None;
+    }
 
     // EM = 0x00 || 0x02 || PS || 0x00 || M
     // PS = at least 8 non-zero bytes
@@ -268,10 +289,14 @@ fn rsa_pkcs1_v15_encrypt(n: &BigUint, e: &BigUint, m: &[u8]) -> Option<Vec<u8>> 
     em[2 + ps_len + 1..].copy_from_slice(m);
 
     let p = BigUint::from_bytes_be(&em);
-    if p.is_zero() || p >= *n { return None; }
+    if p.is_zero() || p >= *n {
+        return None;
+    }
     let c = p.modpow(e, n);
     let mut ct = c.to_bytes_be();
-    while ct.len() < n_byte_len { ct.insert(0, 0x00); }
+    while ct.len() < n_byte_len {
+        ct.insert(0, 0x00);
+    }
     Some(ct)
 }
 
@@ -280,7 +305,9 @@ fn rsa_pkcs1_v15_encrypt(n: &BigUint, e: &BigUint, m: &[u8]) -> Option<Vec<u8>> 
 fn parse_server_hello_random(accumulated: &[u8]) -> Option<[u8; 32]> {
     let body = find_handshake_body(accumulated, 0x02)?;
     // ServerHello body: server_version(2) || random(32) || ...
-    if body.len() < 34 { return None; }
+    if body.len() < 34 {
+        return None;
+    }
     let mut out = [0u8; 32];
     out.copy_from_slice(&body[2..34]);
     Some(out)
@@ -290,13 +317,16 @@ fn find_handshake_body(buf: &[u8], typ: u8) -> Option<Vec<u8>> {
     let mut i = 0;
     while i + 4 <= buf.len() {
         let msg_type = buf[i];
-        let msg_len = ((buf[i + 1] as usize) << 16)
-            | ((buf[i + 2] as usize) << 8)
-            | (buf[i + 3] as usize);
+        let msg_len =
+            ((buf[i + 1] as usize) << 16) | ((buf[i + 2] as usize) << 8) | (buf[i + 3] as usize);
         let start = i + 4;
         let end = start + msg_len;
-        if end > buf.len() { return None; }
-        if msg_type == typ { return Some(buf[start..end].to_vec()); }
+        if end > buf.len() {
+            return None;
+        }
+        if msg_type == typ {
+            return Some(buf[start..end].to_vec());
+        }
         i = end;
     }
     None
@@ -305,22 +335,26 @@ fn find_handshake_body(buf: &[u8], typ: u8) -> Option<Vec<u8>> {
 fn has_handshake_type(body: &[u8], typ: u8) -> bool {
     let mut i = 0;
     while i + 4 <= body.len() {
-        let msg_len = ((body[i + 1] as usize) << 16)
-            | ((body[i + 2] as usize) << 8)
-            | (body[i + 3] as usize);
-        if body[i] == typ { return true; }
-        if i + 4 + msg_len > body.len() { return false; }
+        let msg_len =
+            ((body[i + 1] as usize) << 16) | ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
+        if body[i] == typ {
+            return true;
+        }
+        if i + 4 + msg_len > body.len() {
+            return false;
+        }
         i += 4 + msg_len;
     }
     false
 }
 
 fn parse_rsa_pubkey_from_cert_message(body: &[u8]) -> Option<(BigUint, BigUint)> {
-    if body.len() < 6 { return None; }
+    if body.len() < 6 {
+        return None;
+    }
     let mut i = 3; // skip outer 3-byte total length
-    let cert_len = ((body[i] as usize) << 16)
-        | ((body[i + 1] as usize) << 8)
-        | (body[i + 2] as usize);
+    let cert_len =
+        ((body[i] as usize) << 16) | ((body[i + 1] as usize) << 8) | (body[i + 2] as usize);
     i += 3;
     let cert_der = body.get(i..i + cert_len)?;
     let (_, cert) = X509Certificate::from_der(cert_der).ok()?;
@@ -331,21 +365,31 @@ fn parse_rsa_pubkey_from_cert_message(body: &[u8]) -> Option<(BigUint, BigUint)>
 
 fn rsa_pubkey_from_der(der: &[u8]) -> Option<(BigUint, BigUint)> {
     let mut i = 0;
-    if *der.get(i)? != 0x30 { return None; }
+    if *der.get(i)? != 0x30 {
+        return None;
+    }
     i += 1;
     let _ = read_der_length(der, &mut i)?;
-    if *der.get(i)? != 0x02 { return None; }
+    if *der.get(i)? != 0x02 {
+        return None;
+    }
     i += 1;
     let mod_len = read_der_length(der, &mut i)?;
     let mod_bytes = der.get(i..i + mod_len)?;
     i += mod_len;
-    if *der.get(i)? != 0x02 { return None; }
+    if *der.get(i)? != 0x02 {
+        return None;
+    }
     i += 1;
     let exp_len = read_der_length(der, &mut i)?;
     let exp_bytes = der.get(i..i + exp_len)?;
 
     fn strip(b: &[u8]) -> &[u8] {
-        if b.first() == Some(&0x00) { &b[1..] } else { b }
+        if b.first() == Some(&0x00) {
+            &b[1..]
+        } else {
+            b
+        }
     }
     let n = BigUint::from_bytes_be(strip(mod_bytes));
     let e = BigUint::from_bytes_be(strip(exp_bytes));
@@ -355,9 +399,13 @@ fn rsa_pubkey_from_der(der: &[u8]) -> Option<(BigUint, BigUint)> {
 fn read_der_length(buf: &[u8], i: &mut usize) -> Option<usize> {
     let first = *buf.get(*i)?;
     *i += 1;
-    if first < 0x80 { return Some(first as usize); }
+    if first < 0x80 {
+        return Some(first as usize);
+    }
     let n = (first & 0x7f) as usize;
-    if n == 0 || n > 4 { return None; }
+    if n == 0 || n > 4 {
+        return None;
+    }
     let mut len = 0usize;
     for _ in 0..n {
         len = (len << 8) | (*buf.get(*i)? as usize);

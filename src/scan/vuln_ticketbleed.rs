@@ -55,7 +55,10 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> TicketbleedVe
         parse_server_hello_session_id(&body)
     })
     .await;
-    result.ok().flatten().unwrap_or(TicketbleedVerdict::Indeterminate)
+    result
+        .ok()
+        .flatten()
+        .unwrap_or(TicketbleedVerdict::Indeterminate)
 }
 
 /// ServerHello body:
@@ -67,8 +70,8 @@ fn parse_server_hello_session_id(body: &[u8]) -> Option<TicketbleedVerdict> {
         return Some(TicketbleedVerdict::Indeterminate);
     }
     let mut i = 4usize; // skip handshake header
-    i += 2;             // server_version
-    i += 32;            // random
+    i += 2; // server_version
+    i += 32; // random
     let sid_len = *body.get(i)? as usize;
     i += 1;
 
@@ -83,13 +86,17 @@ fn parse_server_hello_session_id(body: &[u8]) -> Option<TicketbleedVerdict> {
     // Count how many leading bytes match PROBE_BYTE.
     let mut matches = 0;
     for b in sid {
-        if *b == PROBE_BYTE { matches += 1; } else { break; }
+        if *b == PROBE_BYTE {
+            matches += 1;
+        } else {
+            break;
+        }
     }
 
     Some(match matches {
-        32 => TicketbleedVerdict::NotVulnerable,           // clean echo
-        0  => TicketbleedVerdict::NotApplicable,           // server replaced entirely
-        _  => TicketbleedVerdict::Vulnerable,              // F5 partial overflow
+        32 => TicketbleedVerdict::NotVulnerable, // clean echo
+        0 => TicketbleedVerdict::NotApplicable,  // server replaced entirely
+        _ => TicketbleedVerdict::Vulnerable,     // F5 partial overflow
     })
 }
 
@@ -132,7 +139,8 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(&[0u8; 32]);
 
     // Session ID — 32 bytes of 'A' (0x41).
@@ -141,7 +149,8 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
 
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00);
+    body.push(0x01);
+    body.push(0x00);
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -155,7 +164,8 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec

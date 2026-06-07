@@ -6,58 +6,74 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use rustls::{ClientConfig, RootCertStore};
+use rustls_pki_types::ServerName;
 use serde::Serialize;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_rustls::TlsConnector;
-use rustls::{ClientConfig, RootCertStore};
-use rustls_pki_types::ServerName;
-use x509_parser::prelude::*;
 use x509_parser::der_parser::oid::Oid;
+use x509_parser::prelude::*;
 
-use crate::finding::{make, Finding};
 use super::oid_names;
 use super::timing::Timings;
+use crate::finding::{make, Finding};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CertificateInfo {
-    pub subject:             String,
-    pub issuer:              String,
-    pub san:                 Vec<String>,
-    pub not_before:          DateTime<Utc>,
-    pub not_after:           DateTime<Utc>,
-    pub days_remaining:      i64,
+    pub subject: String,
+    pub issuer: String,
+    pub san: Vec<String>,
+    pub not_before: DateTime<Utc>,
+    pub not_after: DateTime<Utc>,
+    pub days_remaining: i64,
     pub signature_algorithm: String,
-    pub key_algorithm:       String,
-    pub key_bits:            u32,
+    pub key_algorithm: String,
+    pub key_bits: u32,
     /// Named curve for EC keys ("secp256r1", "secp384r1", …) or `None`
     /// for RSA / Ed25519 / DSA.
-    pub ec_curve:            Option<String>,
-    pub chain_complete:      bool,
-    pub self_signed:         bool,
-    pub ev:                  bool,
-    pub must_staple:         bool,
-    pub sct_count:           u32,
-    pub ocsp_stapled:        bool,
-    pub ocsp_status:         Option<String>,
+    pub ec_curve: Option<String>,
+    pub chain_complete: bool,
+    pub self_signed: bool,
+    pub ev: bool,
+    pub must_staple: bool,
+    pub sct_count: u32,
+    pub ocsp_stapled: bool,
+    pub ocsp_status: Option<String>,
 }
 
 impl CertificateInfo {
     pub fn contribute_findings(&self, host: &str, findings: &mut Vec<Finding>) {
         if self.days_remaining < 0 {
-            findings.push(make("TLS-CERT-EXPIRED", host, format!("{} days past expiry", -self.days_remaining)));
+            findings.push(make(
+                "TLS-CERT-EXPIRED",
+                host,
+                format!("{} days past expiry", -self.days_remaining),
+            ));
         } else if self.days_remaining < 30 {
-            findings.push(make("TLS-CERT-NEAR-EXPIRY", host, format!("{} days remaining", self.days_remaining)));
+            findings.push(make(
+                "TLS-CERT-NEAR-EXPIRY",
+                host,
+                format!("{} days remaining", self.days_remaining),
+            ));
         }
         if self.self_signed {
             findings.push(make("TLS-CERT-SELF-SIGNED", host, "Issuer matches subject"));
         }
         if !self.chain_complete {
-            findings.push(make("TLS-CHAIN-INCOMPLETE", host, "Server did not present full intermediate chain"));
+            findings.push(make(
+                "TLS-CHAIN-INCOMPLETE",
+                host,
+                "Server did not present full intermediate chain",
+            ));
         }
         let sig_lower = self.signature_algorithm.to_lowercase();
         if sig_lower.contains("sha1") || sig_lower.contains("md5") {
-            findings.push(make("TLS-CERT-WEAK-SIGNATURE", host, &self.signature_algorithm));
+            findings.push(make(
+                "TLS-CERT-WEAK-SIGNATURE",
+                host,
+                &self.signature_algorithm,
+            ));
         }
         let weak_rsa = self.key_algorithm == "rsaEncryption" && self.key_bits < 2048;
         let weak_ecc = self.key_algorithm == "ecPublicKey" && self.key_bits < 256;
@@ -69,7 +85,11 @@ impl CertificateInfo {
             ));
         }
         if !self.ocsp_stapled {
-            findings.push(make("TLS-OCSP-NOT-STAPLED", host, "Server did not staple OCSP response"));
+            findings.push(make(
+                "TLS-OCSP-NOT-STAPLED",
+                host,
+                "Server did not staple OCSP response",
+            ));
         }
         if matches!(self.ocsp_status.as_deref(), Some("revoked")) {
             findings.push(make("TLS-OCSP-REVOKED", host, "OCSP response is revoked"));
@@ -137,7 +157,9 @@ pub async fn inspect(
     let chain = conn
         .peer_certificates()
         .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
-    let leaf_der = chain.first().ok_or_else(|| anyhow::anyhow!("empty cert chain"))?;
+    let leaf_der = chain
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("empty cert chain"))?;
     // Stapled OCSP from rustls 0.23 requires a custom certificate verifier
     // to intercept; deferred to v0.2.1 ("OCSP via rasn-ocsp" item in TODO).
     let info = parse_leaf(leaf_der.as_ref(), chain.len() > 1, None)?;
@@ -150,8 +172,8 @@ fn parse_leaf(
     chain_has_intermediates: bool,
     stapled_ocsp: Option<&[u8]>,
 ) -> anyhow::Result<CertificateInfo> {
-    let (_, cert) = X509Certificate::from_der(der)
-        .map_err(|e| anyhow::anyhow!("DER parse failed: {e}"))?;
+    let (_, cert) =
+        X509Certificate::from_der(der).map_err(|e| anyhow::anyhow!("DER parse failed: {e}"))?;
     let tbs = &cert.tbs_certificate;
 
     let subject = tbs.subject.to_string();
@@ -159,9 +181,8 @@ fn parse_leaf(
     let not_before = chrono_from_asn1(tbs.validity.not_before);
     let not_after = chrono_from_asn1(tbs.validity.not_after);
     let days_remaining = (not_after - Utc::now()).num_days();
-    let signature_algorithm = oid_names::signature_algorithm(
-        &tbs.signature.algorithm.to_id_string(),
-    ).to_string();
+    let signature_algorithm =
+        oid_names::signature_algorithm(&tbs.signature.algorithm.to_id_string()).to_string();
 
     let (key_algorithm, key_bits, ec_curve) = key_strength(&tbs.subject_pki);
 
@@ -211,7 +232,11 @@ fn key_strength(spki: &SubjectPublicKeyInfo) -> (String, u32, Option<String>) {
             if let Ok(curve_oid) = params.as_oid() {
                 let curve_oid_str = curve_oid.to_id_string();
                 if let Some(bits) = oid_names::ec_curve_bits(&curve_oid_str) {
-                    return (algo_name, bits, Some(oid_names::ec_curve_name(&curve_oid_str).to_string()));
+                    return (
+                        algo_name,
+                        bits,
+                        Some(oid_names::ec_curve_name(&curve_oid_str).to_string()),
+                    );
                 }
             }
         }
@@ -233,7 +258,11 @@ fn key_strength(spki: &SubjectPublicKeyInfo) -> (String, u32, Option<String>) {
     }
 
     // Unknown — fall back to the (overly generous) DER bit length.
-    (algo_name, (spki.subject_public_key.data.len() * 8) as u32, None)
+    (
+        algo_name,
+        (spki.subject_public_key.data.len() * 8) as u32,
+        None,
+    )
 }
 
 /// Parse the modulus length out of an RSAPublicKey DER blob
@@ -241,15 +270,23 @@ fn key_strength(spki: &SubjectPublicKeyInfo) -> (String, u32, Option<String>) {
 fn rsa_modulus_bits(der: &[u8]) -> Option<u32> {
     // Quick and dirty walker — accepts the SEQUENCE then the modulus INTEGER.
     let mut i = 0;
-    if der.get(i)? != &0x30 { return None; }
+    if der.get(i)? != &0x30 {
+        return None;
+    }
     i += 1;
     let _ = parse_der_length(der, &mut i)?;
-    if der.get(i)? != &0x02 { return None; } // INTEGER tag
+    if der.get(i)? != &0x02 {
+        return None;
+    } // INTEGER tag
     i += 1;
     let modulus_len = parse_der_length(der, &mut i)?;
     let modulus = der.get(i..i + modulus_len)?;
     // Strip any DER sign-extension zero byte.
-    let mod_bytes = if modulus.first() == Some(&0x00) { &modulus[1..] } else { modulus };
+    let mod_bytes = if modulus.first() == Some(&0x00) {
+        &modulus[1..]
+    } else {
+        modulus
+    };
     Some((mod_bytes.len() * 8) as u32)
 }
 
@@ -378,11 +415,21 @@ fn split_host_port(target: &str) -> anyhow::Result<(String, u16)> {
 pub fn symantec_era_issuer_match(issuer: &str) -> Option<&'static str> {
     let lower = issuer.to_ascii_lowercase();
     // Order: most-specific tokens first so we report the right family.
-    if lower.contains("rapidssl")  { return Some("RapidSSL"); }
-    if lower.contains("geotrust")  { return Some("GeoTrust"); }
-    if lower.contains("thawte")    { return Some("Thawte"); }
-    if lower.contains("verisign")  { return Some("VeriSign"); }
-    if lower.contains("symantec")  { return Some("Symantec"); }
+    if lower.contains("rapidssl") {
+        return Some("RapidSSL");
+    }
+    if lower.contains("geotrust") {
+        return Some("GeoTrust");
+    }
+    if lower.contains("thawte") {
+        return Some("Thawte");
+    }
+    if lower.contains("verisign") {
+        return Some("VeriSign");
+    }
+    if lower.contains("symantec") {
+        return Some("Symantec");
+    }
     None
 }
 
@@ -393,7 +440,9 @@ mod symantec_distrust_tests {
     #[test]
     fn matches_symantec() {
         assert_eq!(
-            symantec_era_issuer_match("CN=Symantec Class 3 Secure Server CA - G4, O=Symantec Corporation, C=US"),
+            symantec_era_issuer_match(
+                "CN=Symantec Class 3 Secure Server CA - G4, O=Symantec Corporation, C=US"
+            ),
             Some("Symantec"),
         );
     }
@@ -417,7 +466,9 @@ mod symantec_distrust_tests {
     #[test]
     fn matches_verisign() {
         assert_eq!(
-            symantec_era_issuer_match("CN=VeriSign Class 3 Public Primary Certification Authority - G5"),
+            symantec_era_issuer_match(
+                "CN=VeriSign Class 3 Public Primary Certification Authority - G5"
+            ),
             Some("VeriSign"),
         );
     }

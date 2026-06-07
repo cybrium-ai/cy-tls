@@ -54,11 +54,7 @@ pub fn is_cbc_suite(suite_id: u16) -> bool {
 /// LibreSSL / BoringSSL / rustls / s2n server with CBC cipher
 /// support is *NOT* vulnerable. Old F5 BIG-IP / Citrix NetScaler /
 /// older Cisco devices ARE the typical hits.
-pub fn contribute_findings(
-    target: &str,
-    accepted_cbc_suites: &[u16],
-    findings: &mut Vec<Finding>,
-) {
+pub fn contribute_findings(target: &str, accepted_cbc_suites: &[u16], findings: &mut Vec<Finding>) {
     if accepted_cbc_suites.is_empty() {
         return;
     }
@@ -74,7 +70,11 @@ pub fn contribute_findings(
              GOLDENDOODLE / Zombie POODLE / Lucky13 padding-oracle \
              attacks. Active oracle probe in v0.3.1.",
             accepted_cbc_suites.len(),
-            if accepted_cbc_suites.len() == 1 { "" } else { "s" },
+            if accepted_cbc_suites.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
         ),
     ));
 }

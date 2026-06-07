@@ -9,24 +9,24 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use rustls::{ClientConfig, RootCertStore};
+use rustls_pki_types::ServerName;
 use serde::Serialize;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_rustls::TlsConnector;
-use rustls::{ClientConfig, RootCertStore};
-use rustls_pki_types::ServerName;
 
-use crate::finding::{make, Finding};
 use super::timing::Timings;
+use crate::finding::{make, Finding};
 
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct ProtocolSupport {
-    pub sslv2:  VersionResult,
-    pub sslv3:  VersionResult,
-    pub tls10:  VersionResult,
-    pub tls11:  VersionResult,
-    pub tls12:  VersionResult,
-    pub tls13:  Tls13Result,
+    pub sslv2: VersionResult,
+    pub sslv3: VersionResult,
+    pub tls10: VersionResult,
+    pub tls11: VersionResult,
+    pub tls12: VersionResult,
+    pub tls13: Tls13Result,
     /// Negotiated key exchange group (e.g. `X25519`, `secp256r1`).
     /// TLS 1.3 always populates this; TLS 1.2 sometimes does.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,19 +70,35 @@ impl ProtocolSupport {
             // textbook DROWN (CVE-2016-0800) exposure — the SSLv2
             // server provides the Bleichenbacher oracle that decrypts
             // TLS sessions on a different port sharing the same key.
-            findings.push(make("TLS-DROWN-VULNERABLE", host, "SSLv2 enabled on the same host — DROWN attack surface"));
+            findings.push(make(
+                "TLS-DROWN-VULNERABLE",
+                host,
+                "SSLv2 enabled on the same host — DROWN attack surface",
+            ));
         }
         if self.sslv3.supported {
             findings.push(make("TLS-SSLV3", host, "SSLv3 ClientHello accepted"));
         }
         if self.tls10.supported {
-            findings.push(make("TLS-WEAK-VERSION-1.0", host, "TLS 1.0 ClientHello accepted"));
+            findings.push(make(
+                "TLS-WEAK-VERSION-1.0",
+                host,
+                "TLS 1.0 ClientHello accepted",
+            ));
         }
         if self.tls11.supported {
-            findings.push(make("TLS-WEAK-VERSION-1.1", host, "TLS 1.1 ClientHello accepted"));
+            findings.push(make(
+                "TLS-WEAK-VERSION-1.1",
+                host,
+                "TLS 1.1 ClientHello accepted",
+            ));
         }
         if !self.tls13.supported {
-            findings.push(make("TLS-NO-TLS13", host, "Server did not negotiate TLS 1.3"));
+            findings.push(make(
+                "TLS-NO-TLS13",
+                host,
+                "Server did not negotiate TLS 1.3",
+            ));
         }
         if self.tls13.zero_rtt_accepted {
             findings.push(make(
@@ -132,14 +148,13 @@ pub async fn enumerate(
         super::legacy_proto::probe_version(target, &host_str, 0x03, 0x02, per_probe).await;
     report.sslv3.supported =
         super::legacy_proto::probe_version(target, &host_str, 0x03, 0x00, per_probe).await;
-    report.sslv2.supported =
-        super::legacy_proto::probe_sslv2(target, per_probe).await;
+    report.sslv2.supported = super::legacy_proto::probe_sslv2(target, per_probe).await;
 
     timings.client_hello = hello_start.elapsed().as_millis() as u64;
     Ok(report)
 }
 
-enum NegotiatedVersion {
+pub(super) enum NegotiatedVersion {
     Tls12,
     Tls13,
 }
@@ -180,7 +195,8 @@ async fn try_handshake(
         .negotiated_cipher_suite()
         .map(|s| format!("{:?}", s.suite()))
         .unwrap_or_else(|| "unknown".to_string());
-    let forward_secrecy = suite_name.contains("ECDHE") || suite_name.contains("DHE")
+    let forward_secrecy = suite_name.contains("ECDHE")
+        || suite_name.contains("DHE")
         || version == rustls::ProtocolVersion::TLSv1_3;
     let key_exchange_group = conn
         .negotiated_key_exchange_group()

@@ -18,11 +18,7 @@ use crate::finding::Finding;
 /// Distinct ID from TLS-CBC-MAC-THEN-ENCRYPT (which covers BEAST /
 /// GOLDENDOODLE / Zombie POODLE family) — this one is the specific
 /// AES-NI / Lucky13-mitigation oracle.
-pub fn contribute_findings(
-    target: &str,
-    accepted_cbc_suites: &[u16],
-    findings: &mut Vec<Finding>,
-) {
+pub fn contribute_findings(target: &str, accepted_cbc_suites: &[u16], findings: &mut Vec<Finding>) {
     if accepted_cbc_suites.is_empty() {
         return;
     }
@@ -34,7 +30,11 @@ pub fn contribute_findings(
              for OpenSSL AES-NI padding oracle (CVE-2016-2107) if running \
              OpenSSL <1.0.1t / <1.0.2h. Active probe in v0.4.x.",
             accepted_cbc_suites.len(),
-            if accepted_cbc_suites.len() == 1 { "" } else { "s" },
+            if accepted_cbc_suites.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
         ),
     ));
 }

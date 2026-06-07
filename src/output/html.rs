@@ -13,10 +13,10 @@ use crate::scan::ScanReport;
 pub fn render(reports: &[ScanReport]) -> String {
     let total_findings: usize = reports.iter().map(|r| r.findings.len()).sum();
     let critical = count_by(reports, "critical");
-    let high     = count_by(reports, "high");
-    let medium   = count_by(reports, "medium");
-    let low      = count_by(reports, "low");
-    let info     = count_by(reports, "info");
+    let high = count_by(reports, "high");
+    let medium = count_by(reports, "medium");
+    let low = count_by(reports, "low");
+    let info = count_by(reports, "info");
 
     let mut targets_html = String::new();
     for r in reports {
@@ -149,7 +149,10 @@ fn render_target(r: &ScanReport) -> String {
             esc(&c.signature_algorithm),
             esc(&c.key_algorithm),
             c.key_bits,
-            c.ec_curve.as_deref().map(|n| format!(", {n}")).unwrap_or_default(),
+            c.ec_curve
+                .as_deref()
+                .map(|n| format!(", {n}"))
+                .unwrap_or_default(),
             c.sct_count,
             check(c.ocsp_stapled),
         ));
@@ -178,7 +181,13 @@ fn render_target(r: &ScanReport) -> String {
     sect
 }
 
-fn check(b: bool) -> &'static str { if b { "✓" } else { "✗" } }
+fn check(b: bool) -> &'static str {
+    if b {
+        "✓"
+    } else {
+        "✗"
+    }
+}
 
 fn yes_no(b: bool) -> &'static str {
     if b {
@@ -199,19 +208,19 @@ fn cipher_suffix(ciphers: &[String]) -> String {
 fn sev_order(s: &str) -> u8 {
     match s {
         "critical" => 0,
-        "high"     => 1,
-        "medium"   => 2,
-        "low"      => 3,
-        "info"     => 4,
-        _          => 9,
+        "high" => 1,
+        "medium" => 2,
+        "low" => 3,
+        "info" => 4,
+        _ => 9,
     }
 }
 
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
-     .replace('<', "&lt;")
-     .replace('>', "&gt;")
-     .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 const STYLE: &str = "

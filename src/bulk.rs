@@ -43,7 +43,11 @@ pub async fn run(args: BulkArgs) -> Result<()> {
 }
 
 async fn scan_one(target: String, timeout: Duration, fast: bool) -> ScanReport {
-    let parsed = if target.contains(':') { target.clone() } else { format!("{target}:443") };
+    let parsed = if target.contains(':') {
+        target.clone()
+    } else {
+        format!("{target}:443")
+    };
     let args = crate::cli::ScanArgs {
         targets: vec![parsed.clone()],
         targets_file: None,
@@ -70,19 +74,20 @@ fn failed_report(target: String) -> ScanReport {
         extensions: Default::default(),
         headers: Default::default(),
         timings_ms: Default::default(),
-        findings: vec![crate::finding::make("TLS-UNREACHABLE", &target, "Scan internal error")],
+        findings: vec![crate::finding::make(
+            "TLS-UNREACHABLE",
+            &target,
+            "Scan internal error",
+        )],
         handshake_simulation: Vec::new(),
         server_fingerprint: None,
         cipher_preference: None,
-        forward_secrecy:   None,
-        fallback_scsv:     None,
+        forward_secrecy: None,
+        fallback_scsv: None,
     }
 }
 
-async fn emit_jsonl(
-    out: &Arc<Mutex<tokio::io::Stdout>>,
-    report: &ScanReport,
-) -> Result<()> {
+async fn emit_jsonl(out: &Arc<Mutex<tokio::io::Stdout>>, report: &ScanReport) -> Result<()> {
     use tokio::io::AsyncWriteExt;
     let line = serde_json::to_string(report)?;
     let mut handle = out.lock().await;

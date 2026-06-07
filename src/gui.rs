@@ -72,16 +72,22 @@ struct ScanRequest {
     no_cipher_enum: bool,
 }
 
-fn default_timeout() -> u64 { 30 }
+fn default_timeout() -> u64 {
+    30
+}
 
 async fn api_scan(
     State(state): State<AppState>,
     Json(req): Json<ScanRequest>,
 ) -> impl IntoResponse {
     if req.targets.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "error": "no targets provided",
-        }))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "no targets provided",
+            })),
+        )
+            .into_response();
     }
 
     let args = crate::cli::ScanArgs {
@@ -99,9 +105,13 @@ async fn api_scan(
             hist.extend(reports.iter().cloned());
             Json(serde_json::json!({ "reports": reports })).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-            "error": e.to_string(),
-        }))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": e.to_string(),
+            })),
+        )
+            .into_response(),
     }
 }
 
@@ -120,23 +130,27 @@ async fn api_export(
     Query(q): Query<ExportQuery>,
 ) -> impl IntoResponse {
     let format = match q.format.as_str() {
-        "json"  => OutputFormat::Json,
+        "json" => OutputFormat::Json,
         "jsonl" => OutputFormat::Jsonl,
         "sarif" => OutputFormat::Sarif,
-        "csv"   => OutputFormat::Csv,
-        "html"  => OutputFormat::Html,
+        "csv" => OutputFormat::Csv,
+        "html" => OutputFormat::Html,
         _ => return (StatusCode::BAD_REQUEST, "unsupported format").into_response(),
     };
 
     let hist = state.history.read().await;
     let body: String = match format {
-        OutputFormat::Json  => serde_json::to_string_pretty(&*hist).unwrap_or_default() + "\n",
-        OutputFormat::Jsonl => hist.iter()
-            .filter_map(|r| serde_json::to_string(r).ok())
-            .collect::<Vec<_>>().join("\n") + "\n",
+        OutputFormat::Json => serde_json::to_string_pretty(&*hist).unwrap_or_default() + "\n",
+        OutputFormat::Jsonl => {
+            hist.iter()
+                .filter_map(|r| serde_json::to_string(r).ok())
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n"
+        }
         OutputFormat::Sarif => render_sarif(&hist),
-        OutputFormat::Csv   => output::csv::render(&hist),
-        OutputFormat::Html  => output::html::render(&hist),
+        OutputFormat::Csv => output::csv::render(&hist),
+        OutputFormat::Html => output::html::render(&hist),
     };
 
     let date = chrono::Utc::now().format("%Y-%m-%d");
@@ -146,17 +160,23 @@ async fn api_export(
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, format.content_type().to_string()),
-            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{filename}\"")),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
         ],
         body,
-    ).into_response()
+    )
+        .into_response()
 }
 
 fn render_sarif(reports: &[ScanReport]) -> String {
     // Reuse the SARIF emitter's structure by building the document inline.
     use serde_json::json;
-    let runs: Vec<_> = reports.iter().map(|r| {
-        let results: Vec<_> = r.findings.iter().map(|f| json!({
+    let runs: Vec<_> = reports
+        .iter()
+        .map(|r| {
+            let results: Vec<_> = r.findings.iter().map(|f| json!({
             "ruleId": f.id,
             "level": match f.severity.as_str() {
                 "critical" | "high" => "error",
@@ -166,15 +186,16 @@ fn render_sarif(reports: &[ScanReport]) -> String {
             "message": { "text": format!("{}: {}", f.title, f.evidence) },
             "locations": [{ "physicalLocation": { "artifactLocation": { "uri": f.host } } }]
         })).collect();
-        json!({
-            "tool": { "driver": {
-                "name": "cy-tls",
-                "version": env!("CARGO_PKG_VERSION"),
-                "informationUri": "https://github.com/cybrium-ai/cy-tls"
-            }},
-            "results": results
+            json!({
+                "tool": { "driver": {
+                    "name": "cy-tls",
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "informationUri": "https://github.com/cybrium-ai/cy-tls"
+                }},
+                "results": results
+            })
         })
-    }).collect();
+        .collect();
     serde_json::to_string_pretty(&json!({
         "version": "2.1.0",
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
@@ -185,11 +206,13 @@ fn render_sarif(reports: &[ScanReport]) -> String {
 async fn api_finding_catalog() -> impl IntoResponse {
     let catalog: Vec<_> = crate::finding::FINDING_CATALOG
         .iter()
-        .map(|(id, sev, title)| serde_json::json!({
-            "id": id,
-            "severity": sev.as_str(),
-            "title": title,
-        }))
+        .map(|(id, sev, title)| {
+            serde_json::json!({
+                "id": id,
+                "severity": sev.as_str(),
+                "title": title,
+            })
+        })
         .collect();
     Json(serde_json::json!({ "catalog": catalog }))
 }

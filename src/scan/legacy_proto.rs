@@ -30,10 +30,7 @@ pub async fn probe_version(
 
 /// SSLv2 probe — separate record-layer format from TLS.
 /// Returns true if the server responds with a v2 SERVER-HELLO.
-pub async fn probe_sslv2(
-    target: &str,
-    deadline: Duration,
-) -> bool {
+pub async fn probe_sslv2(target: &str, deadline: Duration) -> bool {
     let result = timeout(deadline, attempt_sslv2(target)).await;
     matches!(result, Ok(Ok(true)))
 }
@@ -163,10 +160,11 @@ fn build_client_hello(sni: &str, major: u8, minor: u8) -> Vec<u8> {
     let extensions_len = sni_ext.len() as u16;
 
     let mut hello_body = Vec::new();
-    hello_body.push(major); hello_body.push(minor);          // client_version
-    hello_body.extend_from_slice(&[0u8; 32]);                // random (zeros — fine for probe)
-    hello_body.push(0);                                       // session_id length
-    // Cipher suites — a small but representative set:
+    hello_body.push(major);
+    hello_body.push(minor); // client_version
+    hello_body.extend_from_slice(&[0u8; 32]); // random (zeros — fine for probe)
+    hello_body.push(0); // session_id length
+                        // Cipher suites — a small but representative set:
     let suites: [u16; 9] = [
         0xC02F, // ECDHE-RSA-AES128-GCM-SHA256
         0xC030, // ECDHE-RSA-AES256-GCM-SHA384
@@ -189,7 +187,7 @@ fn build_client_hello(sni: &str, major: u8, minor: u8) -> Vec<u8> {
     hello_body.extend_from_slice(&sni_ext);
 
     let mut handshake = Vec::new();
-    handshake.push(0x01);                                              // handshake type = ClientHello
+    handshake.push(0x01); // handshake type = ClientHello
     let body_len = hello_body.len() as u32;
     handshake.push(((body_len >> 16) & 0xff) as u8);
     handshake.push(((body_len >> 8) & 0xff) as u8);
@@ -197,8 +195,9 @@ fn build_client_hello(sni: &str, major: u8, minor: u8) -> Vec<u8> {
     handshake.extend_from_slice(&hello_body);
 
     let mut record = Vec::new();
-    record.push(0x16);                                                  // content type = Handshake
-    record.push(major); record.push(minor);                            // record version
+    record.push(0x16); // content type = Handshake
+    record.push(major);
+    record.push(minor); // record version
     record.extend_from_slice(&(handshake.len() as u16).to_be_bytes());
     record.extend_from_slice(&handshake);
     record

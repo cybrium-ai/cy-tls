@@ -47,7 +47,7 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> PqcInfo {
     match result.ok().flatten() {
         Some(id) if is_pqc_group(id) => PqcInfo {
             supported: true,
-            group:    Some(group_name(id).to_string()),
+            group: Some(group_name(id).to_string()),
             group_id: Some(id),
         },
         _ => PqcInfo::default(),
@@ -65,32 +65,42 @@ fn is_pqc_group(id: u16) -> bool {
 }
 
 fn group_name(id: u16) -> &'static str {
-    PQC_GROUPS.iter().find(|(g, _)| *g == id).map(|(_, n)| *n).unwrap_or("unknown-pqc")
+    PQC_GROUPS
+        .iter()
+        .find(|(g, _)| *g == id)
+        .map(|(_, n)| *n)
+        .unwrap_or("unknown-pqc")
 }
 
 /// Walk a ServerHello body for the key_share extension and return the
 /// named group ID the server selected.
 fn parse_server_hello_group(body: &[u8]) -> Option<u16> {
-    if body.first()? != &0x02 { return None; }
+    if body.first()? != &0x02 {
+        return None;
+    }
     let mut i = 4usize; // handshake hdr
-    i += 2;             // server_version
-    i += 32;            // random
+    i += 2; // server_version
+    i += 32; // random
     let sid_len = *body.get(i)? as usize;
     i += 1 + sid_len;
-    i += 2;             // cipher_suite
-    i += 1;             // compression_method
+    i += 2; // cipher_suite
+    i += 1; // compression_method
 
     // Extensions list — optional, but always present for TLS 1.3
-    if i + 2 > body.len() { return None; }
+    if i + 2 > body.len() {
+        return None;
+    }
     let ext_total = ((body[i] as usize) << 8) | (body[i + 1] as usize);
     i += 2;
     let ext_end = (i + ext_total).min(body.len());
 
     while i + 4 <= ext_end {
         let ext_type = ((body[i] as u16) << 8) | (body[i + 1] as u16);
-        let ext_len  = ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
+        let ext_len = ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
         i += 4;
-        if i + ext_len > body.len() { return None; }
+        if i + ext_len > body.len() {
+            return None;
+        }
 
         if ext_type == 0x0033 {
             // key_share in ServerHello is a single KeyShareEntry:
@@ -190,12 +200,14 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(&[0u8; 32]);
     body.push(0); // session id len
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00); // null compression
+    body.push(0x01);
+    body.push(0x00); // null compression
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -209,7 +221,8 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec

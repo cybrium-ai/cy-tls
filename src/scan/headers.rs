@@ -37,7 +37,11 @@ pub struct Hpkp {
 impl HeaderInfo {
     pub fn contribute_findings(&self, host: &str, findings: &mut Vec<Finding>) {
         if !self.hsts.present {
-            findings.push(make("HSTS-MISSING", host, "No Strict-Transport-Security header"));
+            findings.push(make(
+                "HSTS-MISSING",
+                host,
+                "No Strict-Transport-Security header",
+            ));
             return;
         }
         if self.hsts.max_age < 15_768_000 {
@@ -48,7 +52,11 @@ impl HeaderInfo {
             ));
         }
         if !self.hsts.include_subdomains {
-            findings.push(make("HSTS-NO-SUBDOMAINS", host, "HSTS missing includeSubDomains"));
+            findings.push(make(
+                "HSTS-NO-SUBDOMAINS",
+                host,
+                "HSTS missing includeSubDomains",
+            ));
         }
         if self.hsts.preload && !self.hsts.in_preload_list {
             findings.push(make(

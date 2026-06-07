@@ -18,8 +18,8 @@ use tokio::time::timeout;
 #[derive(Debug, Default, Clone)]
 pub struct Tls12Features {
     pub secure_renegotiation: Option<bool>,
-    pub compression_offered:  Option<bool>,
-    pub heartbeat_offered:    Option<bool>,
+    pub compression_offered: Option<bool>,
+    pub heartbeat_offered: Option<bool>,
 }
 
 pub async fn probe(target: &str, sni: &str, deadline: Duration) -> Tls12Features {
@@ -50,17 +50,23 @@ fn parse_server_hello(body: &[u8]) -> Tls12Features {
     if body.len() < i + 2 + 32 + 1 {
         return feat;
     }
-    i += 2;  // server_version
+    i += 2; // server_version
     i += 32; // random
 
-    let sid_len = match body.get(i) { Some(v) => *v as usize, None => return feat };
+    let sid_len = match body.get(i) {
+        Some(v) => *v as usize,
+        None => return feat,
+    };
     i += 1 + sid_len;
     if body.len() < i + 2 + 1 {
         return feat;
     }
     i += 2; // cipher_suite
 
-    let comp = match body.get(i) { Some(v) => *v, None => return feat };
+    let comp = match body.get(i) {
+        Some(v) => *v,
+        None => return feat,
+    };
     i += 1;
     feat.compression_offered = Some(comp != 0);
 
@@ -75,9 +81,11 @@ fn parse_server_hello(body: &[u8]) -> Tls12Features {
     feat.heartbeat_offered = Some(false);
     while i + 4 <= ext_end && i + 4 <= body.len() {
         let ext_type = ((body[i] as u16) << 8) | (body[i + 1] as u16);
-        let ext_len  = ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
+        let ext_len = ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
         i += 4;
-        if i + ext_len > body.len() { break; }
+        if i + ext_len > body.len() {
+            break;
+        }
         match ext_type {
             0xff01 => feat.secure_renegotiation = Some(true),
             0x000f => feat.heartbeat_offered = Some(true),
@@ -136,19 +144,21 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     extensions.extend_from_slice(&groups_ext);
 
     let suites: [u16; 7] = [
-        0xc02f, 0xc030, 0xc02b, 0xc02c,  // ECDHE GCM
-        0xcca8, 0xcca9,                   // ChaCha20
-        0x009c,                           // RSA AES128 GCM (fallback)
+        0xc02f, 0xc030, 0xc02b, 0xc02c, // ECDHE GCM
+        0xcca8, 0xcca9, // ChaCha20
+        0x009c, // RSA AES128 GCM (fallback)
     ];
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);  // TLS 1.2
+    body.push(0x03);
+    body.push(0x03); // TLS 1.2
     body.extend_from_slice(&[0u8; 32]);
     body.push(0); // session id len
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00); // null compression
+    body.push(0x01);
+    body.push(0x00); // null compression
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -162,7 +172,8 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec

@@ -27,28 +27,28 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 struct JsonRpcRequest {
     #[allow(dead_code)]
     jsonrpc: String,
-    id:      Option<Value>,
-    method:  String,
+    id: Option<Value>,
+    method: String,
     #[serde(default)]
-    params:  Value,
+    params: Value,
 }
 
 #[derive(Debug, Serialize)]
 struct JsonRpcResponse {
     jsonrpc: &'static str,
-    id:      Value,
+    id: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
-    result:  Option<Value>,
+    result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    error:   Option<JsonRpcError>,
+    error: Option<JsonRpcError>,
 }
 
 #[derive(Debug, Serialize)]
 struct JsonRpcError {
-    code:    i32,
+    code: i32,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    data:    Option<Value>,
+    data: Option<Value>,
 }
 
 pub async fn run() -> Result<()> {
@@ -97,7 +97,7 @@ async fn dispatch(req: JsonRpcRequest) -> Option<JsonRpcResponse> {
 
     let result = match req.method.as_str() {
         "initialize" => Ok(initialize_payload()),
-        "ping"       => Ok(json!({})),
+        "ping" => Ok(json!({})),
         "tools/list" => Ok(tools_list_payload()),
         "tools/call" => tools_call(&req.params).await,
         "notifications/initialized" => return None, // notification, no response
@@ -113,8 +113,18 @@ async fn dispatch(req: JsonRpcRequest) -> Option<JsonRpcResponse> {
     }
 
     Some(match result {
-        Ok(v)  => JsonRpcResponse { jsonrpc: "2.0", id, result: Some(v), error: None },
-        Err(e) => JsonRpcResponse { jsonrpc: "2.0", id, result: None, error: Some(e) },
+        Ok(v) => JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: Some(v),
+            error: None,
+        },
+        Err(e) => JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(e),
+        },
     })
 }
 
@@ -164,7 +174,10 @@ fn tools_list_payload() -> Value {
 }
 
 async fn tools_call(params: &Value) -> Result<Value, JsonRpcError> {
-    let name = params.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+    let name = params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
     match name {
@@ -181,7 +194,11 @@ async fn run_scan(args: &Value) -> Result<Value, JsonRpcError> {
     let targets: Vec<String> = args
         .get("targets")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     if targets.is_empty() {
@@ -195,17 +212,28 @@ async fn run_scan(args: &Value) -> Result<Value, JsonRpcError> {
     let scan_args = crate::cli::ScanArgs {
         targets,
         targets_file: None,
-        timeout_seconds: args.get("timeout_seconds").and_then(|v| v.as_u64()).unwrap_or(30),
-        no_cipher_enum:  args.get("no_cipher_enum").and_then(|v| v.as_bool()).unwrap_or(false),
-        handshake_sim:   args.get("handshake_sim").and_then(|v| v.as_bool()).unwrap_or(false),
+        timeout_seconds: args
+            .get("timeout_seconds")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30),
+        no_cipher_enum: args
+            .get("no_cipher_enum")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        handshake_sim: args
+            .get("handshake_sim")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         format: crate::cli::OutputFormat::Json,
     };
 
-    let reports = crate::scan::run_to_reports(scan_args).await.map_err(|e| JsonRpcError {
-        code: -32000,
-        message: format!("scan failed: {e}"),
-        data: None,
-    })?;
+    let reports = crate::scan::run_to_reports(scan_args)
+        .await
+        .map_err(|e| JsonRpcError {
+            code: -32000,
+            message: format!("scan failed: {e}"),
+            data: None,
+        })?;
 
     let text = serde_json::to_string_pretty(&reports).map_err(|e| JsonRpcError {
         code: -32603,

@@ -21,11 +21,11 @@
 #![allow(dead_code)]
 
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use sha1::Sha1;
+use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
-type HmacSha1   = Hmac<Sha1>;
+type HmacSha1 = Hmac<Sha1>;
 
 /// TLS 1.2 PRF — RFC 5246 §5. Uses HMAC-SHA256 for cipher suites with
 /// SHA-256 as the PRF hash (the default for TLS 1.2 unless the suite
@@ -85,8 +85,8 @@ pub fn derive_master_secret(
 pub struct KeyBlock {
     pub client_write_mac_key: [u8; 20],
     pub server_write_mac_key: [u8; 20],
-    pub client_write_key:     [u8; 16],
-    pub server_write_key:     [u8; 16],
+    pub client_write_key: [u8; 16],
+    pub server_write_key: [u8; 16],
 }
 
 pub fn derive_key_block(
@@ -112,8 +112,8 @@ pub fn derive_key_block(
     let mut out = KeyBlock {
         client_write_mac_key: [0u8; 20],
         server_write_mac_key: [0u8; 20],
-        client_write_key:     [0u8; 16],
-        server_write_key:     [0u8; 16],
+        client_write_key: [0u8; 16],
+        server_write_key: [0u8; 16],
     };
     out.client_write_mac_key.copy_from_slice(client_mac);
     out.server_write_mac_key.copy_from_slice(server_mac);
@@ -189,16 +189,16 @@ pub fn encrypt_record_with_corruption(
     // 4. AES-128-CBC encrypt.
     let cipher = Aes128CbcEnc::new(&keys.client_write_key.into(), &iv.into());
     let mut ct = vec![0u8; record_plain.len()];
-    cipher.encrypt_padded_b2b_mut::<cbc::cipher::block_padding::NoPadding>(
-        &record_plain, &mut ct,
-    ).unwrap();
+    cipher
+        .encrypt_padded_b2b_mut::<cbc::cipher::block_padding::NoPadding>(&record_plain, &mut ct)
+        .unwrap();
 
     // 5. Wrap in record header.
     //    Total payload = IV (16) + ciphertext.
     let payload_len = 16 + ct.len();
     let mut record = Vec::with_capacity(5 + payload_len);
-    record.push(0x17);            // application_data
-    record.push(0x03);            // TLS 1.2 major.minor
+    record.push(0x17); // application_data
+    record.push(0x03); // TLS 1.2 major.minor
     record.push(0x03);
     record.extend_from_slice(&(payload_len as u16).to_be_bytes());
     record.extend_from_slice(&iv);

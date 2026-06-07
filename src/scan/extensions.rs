@@ -2,17 +2,17 @@
 //! resumption. Phase 1 stub (default = "not detected", findings only
 //! emitted once raw-protocol probing lands in Phase 2).
 
-use std::time::Duration;
 use serde::Serialize;
+use std::time::Duration;
 
 use crate::finding::{make, Finding};
 
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct ExtensionInfo {
-    pub alpn:           Vec<String>,
-    pub renegotiation:  Reneg,
-    pub compression:    Compression,
-    pub heartbeat:      Heartbeat,
+    pub alpn: Vec<String>,
+    pub renegotiation: Reneg,
+    pub compression: Compression,
+    pub heartbeat: Heartbeat,
     pub session_ticket: SessionTicket,
     /// TLS 1.2 ticket + TLS 1.3 PSK resumption probe results.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,13 +44,25 @@ pub struct SessionTicket {
 impl ExtensionInfo {
     pub fn contribute_findings(&self, host: &str, findings: &mut Vec<Finding>) {
         if self.renegotiation.client_initiated_allowed {
-            findings.push(make("TLS-CLIENT-RENEG-ALLOWED", host, "Client renegotiation accepted"));
+            findings.push(make(
+                "TLS-CLIENT-RENEG-ALLOWED",
+                host,
+                "Client renegotiation accepted",
+            ));
         }
         if self.compression.offered {
-            findings.push(make("TLS-COMPRESSION-ENABLED", host, "TLS-level compression advertised"));
+            findings.push(make(
+                "TLS-COMPRESSION-ENABLED",
+                host,
+                "TLS-level compression advertised",
+            ));
         }
         if self.heartbeat.offered {
-            findings.push(make("TLS-HEARTBEAT-ENABLED", host, "Heartbeat extension advertised"));
+            findings.push(make(
+                "TLS-HEARTBEAT-ENABLED",
+                host,
+                "Heartbeat extension advertised",
+            ));
         }
     }
 }

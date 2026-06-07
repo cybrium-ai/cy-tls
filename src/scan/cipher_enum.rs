@@ -80,8 +80,8 @@ pub(super) fn parse_server_hello_cipher(body: &[u8]) -> Option<u16> {
         return None; // not a ServerHello
     }
     let mut i = 4usize; // skip handshake hdr
-    i += 2;             // server_version
-    i += 32;            // random
+    i += 2; // server_version
+    i += 32; // random
     let sid_len = *body.get(i)? as usize;
     i += 1 + sid_len;
     let suite = ((*body.get(i)? as u16) << 8) | (*body.get(i + 1)? as u16);
@@ -133,14 +133,16 @@ pub(super) fn build_client_hello(sni: &str, major: u8, minor: u8, suites: &[u16]
     extensions.extend_from_slice(&groups_ext);
 
     let mut body = Vec::new();
-    body.push(major); body.push(minor);
+    body.push(major);
+    body.push(minor);
     body.extend_from_slice(&[0u8; 32]);
     body.push(0); // session id len
 
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00); // null compression
+    body.push(0x01);
+    body.push(0x00); // null compression
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -154,7 +156,8 @@ pub(super) fn build_client_hello(sni: &str, major: u8, minor: u8, suites: &[u16]
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(major); rec.push(minor);
+    rec.push(major);
+    rec.push(minor);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec
@@ -201,26 +204,26 @@ pub fn name(id: u16) -> &'static str {
         0x002f => "TLS_RSA_WITH_AES_128_CBC_SHA",
         0x0035 => "TLS_RSA_WITH_AES_256_CBC_SHA",
         // Legacy weak — flagged as findings
-        0x000a => "TLS_RSA_WITH_3DES_EDE_CBC_SHA",         // 3DES SWEET32
-        0x0005 => "TLS_RSA_WITH_RC4_128_SHA",              // RC4
-        0x0004 => "TLS_RSA_WITH_RC4_128_MD5",              // RC4 + MD5
-        0x0001 => "TLS_RSA_WITH_NULL_MD5",                 // NULL cipher
-        0x0002 => "TLS_RSA_WITH_NULL_SHA",                 // NULL cipher
+        0x000a => "TLS_RSA_WITH_3DES_EDE_CBC_SHA", // 3DES SWEET32
+        0x0005 => "TLS_RSA_WITH_RC4_128_SHA",      // RC4
+        0x0004 => "TLS_RSA_WITH_RC4_128_MD5",      // RC4 + MD5
+        0x0001 => "TLS_RSA_WITH_NULL_MD5",         // NULL cipher
+        0x0002 => "TLS_RSA_WITH_NULL_SHA",         // NULL cipher
         _ => "UNKNOWN",
     }
 }
 
 /// All the suites we want to enumerate for TLS 1.2 (and earlier).
 pub const TLS12_SUITES: &[u16] = &[
-    0xc02b, 0xc02c, 0xc02f, 0xc030,             // ECDHE AEAD
-    0xcca8, 0xcca9,                             // ChaCha20
-    0xc023, 0xc024, 0xc027, 0xc028,             // ECDHE SHA-2 CBC
-    0xc009, 0xc00a, 0xc013, 0xc014,             // ECDHE SHA-1 CBC
-    0x009e, 0x009f,                             // DHE-RSA AEAD (Logjam relevant)
-    0x0033, 0x0039, 0x0067, 0x006b,             // DHE-RSA CBC (Logjam relevant)
-    0x009c, 0x009d,                             // RSA AEAD
-    0x002f, 0x0035,                             // RSA CBC
-    0x000a,                                     // 3DES (SWEET32)
-    0x0005, 0x0004,                             // RC4
-    0x0001, 0x0002,                             // NULL
+    0xc02b, 0xc02c, 0xc02f, 0xc030, // ECDHE AEAD
+    0xcca8, 0xcca9, // ChaCha20
+    0xc023, 0xc024, 0xc027, 0xc028, // ECDHE SHA-2 CBC
+    0xc009, 0xc00a, 0xc013, 0xc014, // ECDHE SHA-1 CBC
+    0x009e, 0x009f, // DHE-RSA AEAD (Logjam relevant)
+    0x0033, 0x0039, 0x0067, 0x006b, // DHE-RSA CBC (Logjam relevant)
+    0x009c, 0x009d, // RSA AEAD
+    0x002f, 0x0035, // RSA CBC
+    0x000a, // 3DES (SWEET32)
+    0x0005, 0x0004, // RC4
+    0x0001, 0x0002, // NULL
 ];

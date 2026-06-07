@@ -3,35 +3,35 @@
 //! The orchestrator runs every probe module against each target,
 //! aggregates findings, and emits the result on stdout.
 
-mod connect;
-mod protocol;
-mod legacy_proto;
+mod cert;
+mod cipher;
 mod cipher_enum;
-mod session;
-mod tls12_features;
+mod cipher_pref;
+mod connect;
+mod dh_params;
+mod extensions;
+mod fallback_scsv;
+mod forward_secrecy;
 mod handshake_sim;
+mod headers;
+mod legacy_proto;
 mod ocsp;
+mod oid_names;
 mod pqc;
-mod vuln_heartbleed;
-mod vuln_goldendoodle;
+mod protocol;
+mod server_fingerprint;
+mod session;
+mod timing;
+mod tls12_crypto;
+mod tls12_features;
+mod tls13;
 mod vuln_ccs;
-mod vuln_ticketbleed;
+mod vuln_goldendoodle;
+mod vuln_heartbleed;
 mod vuln_padding_oracle;
 mod vuln_padding_oracle_active;
 mod vuln_robot;
-mod tls12_crypto;
-mod cipher_pref;
-mod forward_secrecy;
-mod fallback_scsv;
-mod server_fingerprint;
-mod dh_params;
-mod cert;
-mod cipher;
-mod extensions;
-mod tls13;
-mod headers;
-mod timing;
-mod oid_names;
+mod vuln_ticketbleed;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -44,16 +44,16 @@ use crate::finding::Finding;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanReport {
-    pub target:       String,
-    pub ip:           Option<String>,
-    pub elapsed_ms:   u64,
-    pub protocols:    protocol::ProtocolSupport,
-    pub certificate:  Option<cert::CertificateInfo>,
+    pub target: String,
+    pub ip: Option<String>,
+    pub elapsed_ms: u64,
+    pub protocols: protocol::ProtocolSupport,
+    pub certificate: Option<cert::CertificateInfo>,
     pub key_exchange: cipher::KeyExchangeInfo,
-    pub extensions:   extensions::ExtensionInfo,
-    pub headers:      headers::HeaderInfo,
-    pub timings_ms:   timing::Timings,
-    pub findings:     Vec<Finding>,
+    pub extensions: extensions::ExtensionInfo,
+    pub headers: headers::HeaderInfo,
+    pub timings_ms: timing::Timings,
+    pub findings: Vec<Finding>,
     /// Per-client handshake simulation results. Empty unless the user
     /// passes `--handshake-sim` (because it adds 30 handshakes per host).
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -63,15 +63,15 @@ pub struct ScanReport {
     /// findings to higher-confidence findings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_fingerprint: Option<server_fingerprint::ServerFingerprint>,
-    /// v0.4.1 — cipher-suite preference verdict + Forward-Secrecy bucket
-    /// + TLS_FALLBACK_SCSV downgrade-protection verdict. Qualys SSL
-    /// Labs reports each of these in its grade.
+    /// v0.4.1 — cipher-suite preference verdict + Forward-Secrecy bucket +
+    /// TLS_FALLBACK_SCSV downgrade-protection verdict. Qualys SSL Labs
+    /// reports each of these in its grade.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cipher_preference:  Option<&'static str>,
+    pub cipher_preference: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub forward_secrecy:    Option<&'static str>,
+    pub forward_secrecy: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fallback_scsv:      Option<&'static str>,
+    pub fallback_scsv: Option<&'static str>,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -103,7 +103,12 @@ pub async fn run_to_reports(args: ScanArgs) -> Result<Vec<ScanReport>> {
     Ok(reports)
 }
 
-async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_handshake_sim: bool) -> Result<ScanReport> {
+async fn scan_one(
+    target: &str,
+    timeout: Duration,
+    skip_cipher_enum: bool,
+    do_handshake_sim: bool,
+) -> Result<ScanReport> {
     let start = std::time::Instant::now();
     let mut findings = Vec::new();
     let mut timings = timing::Timings::default();
@@ -124,7 +129,12 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
                 target,
                 "TCP connect failed",
             ));
-            return Ok(stub_report(target.into(), None, start.elapsed().as_millis() as u64, findings));
+            return Ok(stub_report(
+                target.into(),
+                None,
+                start.elapsed().as_millis() as u64,
+                findings,
+            ));
         }
     };
     timings.connect = connect_start.elapsed().as_millis() as u64;
@@ -145,7 +155,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         let o = ocsp::probe(target, host_str, timeout).await;
         if let Some(c) = certificate.as_mut() {
             c.ocsp_stapled = o.stapled;
-            c.ocsp_status  = o.status;
+            c.ocsp_status = o.status;
         }
     }
 
@@ -156,7 +166,6 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         let p = pqc::probe(target, host_str, timeout).await;
         protocols.pqc = Some(p);
     }
-
 
     if let Some(c) = &certificate {
         c.contribute_findings(target, &mut findings);
@@ -175,9 +184,14 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     if !skip_cipher_enum {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         let accepted_at_12 = cipher_enum::enumerate_at_version(
-            target, host_str, 0x03, 0x03,
-            cipher_enum::TLS12_SUITES, timeout,
-        ).await;
+            target,
+            host_str,
+            0x03,
+            0x03,
+            cipher_enum::TLS12_SUITES,
+            timeout,
+        )
+        .await;
         if !accepted_at_12.is_empty() {
             protocols.tls12.supported = true;
         }
@@ -200,10 +214,17 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
                 _ => None,
             };
             if let Some(fid) = weak_id {
-                findings.push(crate::finding::make(fid, target, format!("cipher 0x{:04x} accepted", suite_id)));
+                findings.push(crate::finding::make(
+                    fid,
+                    target,
+                    format!("cipher 0x{:04x} accepted", suite_id),
+                ));
             }
             // TLS_RSA_WITH_* = RSA key exchange, ROBOT-eligible attack surface.
-            if matches!(*suite_id, 0x002f | 0x0035 | 0x009c | 0x009d | 0x0001 | 0x0002 | 0x0004 | 0x0005 | 0x000a) {
+            if matches!(
+                *suite_id,
+                0x002f | 0x0035 | 0x009c | 0x009d | 0x0001 | 0x0002 | 0x0004 | 0x0005 | 0x000a
+            ) {
                 robot_eligible = true;
             }
         }
@@ -240,8 +261,9 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         // DHE detection — any TLS_DHE_RSA_* cipher enumerated triggers
         // a follow-up DH param probe that extracts prime bits + a
         // common-prime hash compare (Logjam).
-        let dhe_accepted = accepted_at_12.iter().any(|s| matches!(*s,
-            0x009e | 0x009f | 0x0033 | 0x0039 | 0x0067 | 0x006b));
+        let dhe_accepted = accepted_at_12
+            .iter()
+            .any(|s| matches!(*s, 0x009e | 0x009f | 0x0033 | 0x0039 | 0x0067 | 0x006b));
         if dhe_accepted {
             let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
             let dh = dh_params::probe(target, host_str, timeout).await;
@@ -269,7 +291,8 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         }
 
         // GOLDENDOODLE / Zombie POODLE eligibility — TLS 1.2 + CBC.
-        let cbc_accepted: Vec<u16> = accepted_at_12.iter()
+        let cbc_accepted: Vec<u16> = accepted_at_12
+            .iter()
             .copied()
             .filter(|s| vuln_goldendoodle::is_cbc_suite(*s))
             .collect();
@@ -287,9 +310,21 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         // Modern browsers mitigate client-side (1/n-1 split) but
         // server-side mitigation is to not offer TLS 1.0 at all.
         if protocols.tls10.supported {
-            let beast_cbc_cipher = accepted_at_12.iter().any(|s| matches!(*s,
-                0xc009 | 0xc00a | 0xc013 | 0xc014 | 0xc023 | 0xc024 | 0xc027 | 0xc028 |
-                0x002f | 0x0035));
+            let beast_cbc_cipher = accepted_at_12.iter().any(|s| {
+                matches!(
+                    *s,
+                    0xc009
+                        | 0xc00a
+                        | 0xc013
+                        | 0xc014
+                        | 0xc023
+                        | 0xc024
+                        | 0xc027
+                        | 0xc028
+                        | 0x002f
+                        | 0x0035
+                )
+            });
             if beast_cbc_cipher {
                 findings.push(crate::finding::make(
                     "TLS-CBC-MAC-THEN-ENCRYPT",
@@ -398,7 +433,11 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     let server_fingerprint = {
         let raw = server_fingerprint::fetch(target, timeout);
         let fp = server_fingerprint::classify(raw.as_deref());
-        if fp.raw.is_none() { None } else { Some(fp) }
+        if fp.raw.is_none() {
+            None
+        } else {
+            Some(fp)
+        }
     };
 
     // OpenSSL AES-NI padding oracle (CVE-2016-2107) finding emission —
@@ -413,7 +452,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     //      banner, emit a fingerprint-confirmed verdict instead.
     //   3. (v0.3.2) Otherwise emit the eligibility-tier message.
     if !cbc_for_padding_oracle.is_empty() {
-        let aes128_cbc_sha_accepted = cbc_for_padding_oracle.iter().any(|s| *s == 0x002f);
+        let aes128_cbc_sha_accepted = cbc_for_padding_oracle.contains(&0x002f);
 
         let active_verdict = if aes128_cbc_sha_accepted {
             let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
@@ -437,11 +476,13 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
             _ => {
                 // Active probe couldn't run (NotApplicable / Indeterminate)
                 // — fall back to fingerprint or eligibility tier.
-                let confirmed = server_fingerprint.as_ref()
+                let confirmed = server_fingerprint
+                    .as_ref()
                     .map(|fp| fp.openssl_vulnerable_padding_oracle)
                     .unwrap_or(false);
                 if confirmed {
-                    let openssl_v = server_fingerprint.as_ref()
+                    let openssl_v = server_fingerprint
+                        .as_ref()
                         .and_then(|fp| fp.openssl_version.as_deref())
                         .unwrap_or("?");
                     findings.push(crate::finding::make(
@@ -453,7 +494,11 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
                         ),
                     ));
                 } else {
-                    vuln_padding_oracle::contribute_findings(target, &cbc_for_padding_oracle, &mut findings);
+                    vuln_padding_oracle::contribute_findings(
+                        target,
+                        &cbc_for_padding_oracle,
+                        &mut findings,
+                    );
                 }
             }
         }
@@ -466,9 +511,13 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     // fingerprint evidence for an operator-actionable severity bump.
     if let Some(fp) = &server_fingerprint {
         if fp.known_cbc_oracle_family {
-            let cbc_in_use = !skip_cipher_enum && protocols.tls12.ciphers.iter().any(|c|
-                c.contains("_CBC_") || c.ends_with("_SHA") || c.ends_with("_SHA256") || c.ends_with("_SHA384")
-            );
+            let cbc_in_use = !skip_cipher_enum
+                && protocols.tls12.ciphers.iter().any(|c| {
+                    c.contains("_CBC_")
+                        || c.ends_with("_SHA")
+                        || c.ends_with("_SHA256")
+                        || c.ends_with("_SHA384")
+                });
             if cbc_in_use {
                 findings.push(crate::finding::make(
                     "TLS-CBC-ORACLE-FAMILY-FP",
@@ -501,7 +550,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     // infrastructure.
     let mut cipher_preference: Option<&'static str> = None;
     let mut forward_secrecy_bucket: Option<&'static str> = None;
-    let mut fallback_scsv_status:   Option<&'static str> = None;
+    let mut fallback_scsv_status: Option<&'static str> = None;
 
     if !skip_cipher_enum {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
@@ -528,12 +577,20 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         // here so we have the authoritative accepted list (the earlier
         // enumeration walked the modern superset).
         let accepted_at_12 = cipher_enum::enumerate_at_version(
-            target, host_str, 0x03, 0x03,
-            cipher_enum::TLS12_SUITES, timeout,
-        ).await;
+            target,
+            host_str,
+            0x03,
+            0x03,
+            cipher_enum::TLS12_SUITES,
+            timeout,
+        )
+        .await;
         let bucket = forward_secrecy::classify(&accepted_at_12, protocols.tls13.supported);
         forward_secrecy_bucket = Some(bucket.as_str());
-        if matches!(bucket, forward_secrecy::FsBucket::None | forward_secrecy::FsBucket::Some) {
+        if matches!(
+            bucket,
+            forward_secrecy::FsBucket::None | forward_secrecy::FsBucket::Some
+        ) {
             findings.push(crate::finding::make(
                 "TLS-FORWARD-SECRECY-WEAK",
                 target,
@@ -582,7 +639,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         server_fingerprint,
         cipher_preference,
         forward_secrecy: forward_secrecy_bucket,
-        fallback_scsv:   fallback_scsv_status,
+        fallback_scsv: fallback_scsv_status,
     })
 }
 
@@ -606,15 +663,20 @@ fn read_targets_file(path: &PathBuf) -> Result<Vec<String>> {
 
 fn emit(reports: &[ScanReport], format: OutputFormat) -> Result<()> {
     match format {
-        OutputFormat::Json  => crate::output::json::emit(reports),
+        OutputFormat::Json => crate::output::json::emit(reports),
         OutputFormat::Jsonl => crate::output::jsonl::emit(reports),
         OutputFormat::Sarif => crate::output::sarif::emit(reports),
-        OutputFormat::Csv   => crate::output::csv::emit(reports),
-        OutputFormat::Html  => crate::output::html::emit(reports),
+        OutputFormat::Csv => crate::output::csv::emit(reports),
+        OutputFormat::Html => crate::output::html::emit(reports),
     }
 }
 
-fn stub_report(target: String, ip: Option<String>, elapsed_ms: u64, findings: Vec<Finding>) -> ScanReport {
+fn stub_report(
+    target: String,
+    ip: Option<String>,
+    elapsed_ms: u64,
+    findings: Vec<Finding>,
+) -> ScanReport {
     ScanReport {
         target,
         ip,
@@ -629,8 +691,8 @@ fn stub_report(target: String, ip: Option<String>, elapsed_ms: u64, findings: Ve
         handshake_simulation: Vec::new(),
         server_fingerprint: None,
         cipher_preference: None,
-        forward_secrecy:   None,
-        fallback_scsv:     None,
+        forward_secrecy: None,
+        fallback_scsv: None,
     }
 }
 

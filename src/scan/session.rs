@@ -68,7 +68,10 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> SessionResump
 }
 
 #[derive(Debug, PartialEq)]
-enum HandshakeKind { Full, Resumed }
+enum HandshakeKind {
+    Full,
+    Resumed,
+}
 
 async fn handshake_once(
     target: &str,
@@ -76,8 +79,14 @@ async fn handshake_once(
     connector: &TlsConnector,
     deadline: Duration,
 ) -> Option<HandshakeKind> {
-    let tcp = timeout(deadline, TcpStream::connect(target)).await.ok()?.ok()?;
-    let tls = timeout(deadline, connector.connect(sni, tcp)).await.ok()?.ok()?;
+    let tcp = timeout(deadline, TcpStream::connect(target))
+        .await
+        .ok()?
+        .ok()?;
+    let tls = timeout(deadline, connector.connect(sni, tcp))
+        .await
+        .ok()?
+        .ok()?;
     let (_, conn) = tls.get_ref();
     Some(match conn.handshake_kind() {
         Some(rustls::HandshakeKind::Resumed) => HandshakeKind::Resumed,
@@ -96,8 +105,14 @@ async fn handshake_with_head(
     connector: &TlsConnector,
     deadline: Duration,
 ) -> Option<()> {
-    let tcp = timeout(deadline, TcpStream::connect(target)).await.ok()?.ok()?;
-    let mut tls = timeout(deadline, connector.connect(sni, tcp)).await.ok()?.ok()?;
+    let tcp = timeout(deadline, TcpStream::connect(target))
+        .await
+        .ok()?
+        .ok()?;
+    let mut tls = timeout(deadline, connector.connect(sni, tcp))
+        .await
+        .ok()?
+        .ok()?;
     let req = format!("HEAD / HTTP/1.0\r\nHost: {host_only}\r\nConnection: close\r\n\r\n");
     let _ = tls.write_all(req.as_bytes()).await;
     let _ = tls.flush().await;

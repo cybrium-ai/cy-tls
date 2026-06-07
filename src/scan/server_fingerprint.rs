@@ -16,11 +16,11 @@ use serde::Serialize;
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct ServerFingerprint {
     /// Raw `Server` HTTP response header (e.g. "nginx/1.18.0", "Microsoft-IIS/10.0").
-    pub raw:        Option<String>,
+    pub raw: Option<String>,
     /// Canonicalised product family ("nginx" / "apache" / "iis" / "f5" / "netscaler" / etc.).
-    pub family:     Option<String>,
+    pub family: Option<String>,
     /// Best-effort product version string.
-    pub version:    Option<String>,
+    pub version: Option<String>,
     /// True if this fingerprint matches a product family known to ship
     /// versions still vulnerable to CBC padding-oracle family attacks
     /// (GOLDENDOODLE / Zombie POODLE / OpenSSL AES-NI / Lucky13).
@@ -40,7 +40,9 @@ pub struct ServerFingerprint {
 
 pub fn classify(server_header: Option<&str>) -> ServerFingerprint {
     let mut out = ServerFingerprint::default();
-    let Some(raw) = server_header else { return out; };
+    let Some(raw) = server_header else {
+        return out;
+    };
     out.raw = Some(raw.to_string());
 
     let lower = raw.to_ascii_lowercase();
@@ -99,14 +101,13 @@ pub fn classify(server_header: Option<&str>) -> ServerFingerprint {
     //   "nginx/1.10.0 (Ubuntu) OpenSSL/1.0.1f"
     if let Some(idx) = lower.find("openssl/") {
         let after = &raw[idx + "openssl/".len()..];
-        let end = after.find(|c: char|
-            c.is_whitespace() || c == '(' || c == ',' || c == ';'
-        ).unwrap_or(after.len());
+        let end = after
+            .find(|c: char| c.is_whitespace() || c == '(' || c == ',' || c == ';')
+            .unwrap_or(after.len());
         let v = after[..end].trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.');
         if !v.is_empty() {
             out.openssl_version = Some(v.to_string());
-            out.openssl_vulnerable_padding_oracle =
-                is_openssl_vulnerable_to_cve_2016_2107(v);
+            out.openssl_vulnerable_padding_oracle = is_openssl_vulnerable_to_cve_2016_2107(v);
         }
     }
 
@@ -130,7 +131,7 @@ pub fn classify(server_header: Option<&str>) -> ServerFingerprint {
 pub fn is_openssl_vulnerable_to_cve_2016_2107(v: &str) -> bool {
     // Strip a trailing -fips / -beta1 / etc suffix; we only care about
     // the canonical MAJOR.MINOR.PATCH[letter] core.
-    let core = v.split(|c: char| c == '-' || c == '+').next().unwrap_or(v);
+    let core = v.split(['-', '+']).next().unwrap_or(v);
 
     // Split major.minor.patch parts. The patch part can be plain
     // ("0") or have a letter suffix ("0a", "1s", "2g") — the letter
@@ -146,7 +147,11 @@ pub fn is_openssl_vulnerable_to_cve_2016_2107(v: &str) -> bool {
     // Split patch number from optional release-letter suffix.
     let mut num_end = 0;
     for (i, ch) in patch_raw.char_indices() {
-        if ch.is_ascii_digit() { num_end = i + ch.len_utf8(); } else { break; }
+        if ch.is_ascii_digit() {
+            num_end = i + ch.len_utf8();
+        } else {
+            break;
+        }
     }
     let patch_num: u32 = patch_raw[..num_end].parse().unwrap_or(0);
     let letter = patch_raw[num_end..].chars().next();
@@ -161,15 +166,15 @@ pub fn is_openssl_vulnerable_to_cve_2016_2107(v: &str) -> bool {
         // ── 1.0.1 line ──────────────────────────────────────────────
         // Vulnerable up to and including 1.0.1s; 1.0.1t is the fix.
         (1, 0, 1) => match letter {
-            None              => true,            // bare 1.0.1 → vulnerable
-            Some(c)           => c < 't',         // a..s vulnerable, t+ fixed
+            None => true,       // bare 1.0.1 → vulnerable
+            Some(c) => c < 't', // a..s vulnerable, t+ fixed
         },
 
         // ── 1.0.2 line ──────────────────────────────────────────────
         // Vulnerable up to and including 1.0.2g; 1.0.2h is the fix.
         (1, 0, 2) => match letter {
-            None              => true,            // bare 1.0.2 → vulnerable
-            Some(c)           => c < 'h',         // a..g vulnerable, h+ fixed
+            None => true,       // bare 1.0.2 → vulnerable
+            Some(c) => c < 'h', // a..g vulnerable, h+ fixed
         },
 
         // ── 1.1.x and later ─────────────────────────────────────────
@@ -186,10 +191,24 @@ fn extract_version(raw: &str) -> Option<String> {
     let slash = raw.find('/')?;
     let after = &raw[slash + 1..];
     // Take up to the first space / paren / null terminator.
-    let end = after.find(|c: char| c.is_whitespace() || c == '(' || c == ',')
-                   .unwrap_or(after.len());
+    let end = after
+        .find(|c: char| c.is_whitespace() || c == '(' || c == ',')
+        .unwrap_or(after.len());
     let v = after[..end].trim();
-    if v.is_empty() { None } else { Some(v.to_string()) }
+    if v.is_empty() {
+        None
+    } else {
+        Some(v.to_string())
+    }
+}
+
+/// Quick HTTP HEAD fetcher — reuses ureq from the existing headers probe.
+pub fn fetch(target: &str, deadline: Duration) -> Option<String> {
+    let (host, _) = target.rsplit_once(':').unwrap_or((target, "443"));
+    let url = format!("https://{host}/");
+    let agent = ureq::AgentBuilder::new().timeout(deadline).build();
+    let response = agent.head(&url).call().ok()?;
+    response.header("server").map(String::from)
 }
 
 #[cfg(test)]
@@ -201,13 +220,13 @@ mod openssl_version_tests {
         // Pre-fix releases — vulnerable.
         assert!(is_openssl_vulnerable_to_cve_2016_2107("0.9.8"));
         assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.0"));
-        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.0t"));   // 1.0.0 line never got the fix
+        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.0t")); // 1.0.0 line never got the fix
         assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.1"));
         assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.1a"));
-        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.1f"));   // popular Ubuntu 14.04 vintage
-        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.1s"));   // last vulnerable
+        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.1f")); // popular Ubuntu 14.04 vintage
+        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.1s")); // last vulnerable
         assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.2"));
-        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.2g"));   // last vulnerable
+        assert!(is_openssl_vulnerable_to_cve_2016_2107("1.0.2g")); // last vulnerable
 
         // Fix releases and later — not vulnerable.
         assert!(!is_openssl_vulnerable_to_cve_2016_2107("1.0.1t"));
@@ -257,13 +276,4 @@ mod openssl_version_tests {
         assert_eq!(fp.openssl_version, None);
         assert!(!fp.openssl_vulnerable_padding_oracle);
     }
-}
-
-/// Quick HTTP HEAD fetcher — reuses ureq from the existing headers probe.
-pub fn fetch(target: &str, deadline: Duration) -> Option<String> {
-    let (host, _) = target.rsplit_once(':').unwrap_or((target, "443"));
-    let url = format!("https://{host}/");
-    let agent = ureq::AgentBuilder::new().timeout(deadline).build();
-    let response = agent.head(&url).call().ok()?;
-    response.header("server").map(String::from)
 }

@@ -35,12 +35,13 @@ pub enum HeartbleedVerdict {
 }
 
 impl HeartbleedVerdict {
+    #[allow(dead_code)]
     pub fn as_str(self) -> &'static str {
         match self {
-            HeartbleedVerdict::NotApplicable  => "not_applicable",
-            HeartbleedVerdict::NotVulnerable  => "not_vulnerable",
-            HeartbleedVerdict::Vulnerable     => "vulnerable",
-            HeartbleedVerdict::Indeterminate  => "indeterminate",
+            HeartbleedVerdict::NotApplicable => "not_applicable",
+            HeartbleedVerdict::NotVulnerable => "not_vulnerable",
+            HeartbleedVerdict::Vulnerable => "vulnerable",
+            HeartbleedVerdict::Indeterminate => "indeterminate",
         }
     }
 }
@@ -98,9 +99,9 @@ pub async fn probe(
         // with only 1 byte of real payload tricks it into reading 16383
         // bytes of memory and sending it back to us.
         let heartbeat: [u8; 8] = [
-            0x18, 0x03, 0x03, 0x00, 0x08,   // record header
-            0x01,                            // heartbeat_request
-            0x40, 0x00,                      // payload_length = 16384
+            0x18, 0x03, 0x03, 0x00, 0x08, // record header
+            0x01, // heartbeat_request
+            0x40, 0x00, // payload_length = 16384
         ];
         let _ = sock.write_all(&heartbeat).await;
 
@@ -125,15 +126,17 @@ pub async fn probe(
         }
     })
     .await;
-    result.ok().flatten().unwrap_or(HeartbleedVerdict::Indeterminate)
+    result
+        .ok()
+        .flatten()
+        .unwrap_or(HeartbleedVerdict::Indeterminate)
 }
 
 fn has_handshake_type(body: &[u8], typ: u8) -> bool {
     let mut i = 0;
     while i + 4 <= body.len() {
-        let msg_len = ((body[i + 1] as usize) << 16)
-            | ((body[i + 2] as usize) << 8)
-            | (body[i + 3] as usize);
+        let msg_len =
+            ((body[i + 1] as usize) << 16) | ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
         if body[i] == typ {
             return true;
         }
@@ -185,12 +188,14 @@ fn build_client_hello_with_heartbeat(sni: &str) -> Vec<u8> {
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(&[0u8; 32]);
     body.push(0);
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00);
+    body.push(0x01);
+    body.push(0x00);
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -204,7 +209,8 @@ fn build_client_hello_with_heartbeat(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec

@@ -8,16 +8,16 @@
 //! See `docs/json-schema.md` for the canonical output shape and
 //! `docs/finding-ids.md` for the stable finding ID catalog.
 
-mod cli;
-mod finding;
-mod output;
-mod scan;
 mod bulk;
-mod preload;
+mod cli;
 mod controls;
 mod error;
+mod finding;
 mod gui;
 mod mcp;
+mod output;
+mod preload;
+mod scan;
 
 use clap::Parser;
 use cli::{Cli, Command};

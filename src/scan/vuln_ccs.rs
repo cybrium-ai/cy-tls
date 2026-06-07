@@ -38,12 +38,20 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> CcsVerdict {
         let mut got_done = false;
         for _ in 0..16 {
             let mut hdr = [0u8; 5];
-            if sock.read_exact(&mut hdr).await.is_err() { break; }
-            if hdr[0] == 0x15 { return Some(CcsVerdict::Indeterminate); }
-            if hdr[0] != 0x16 { break; }
+            if sock.read_exact(&mut hdr).await.is_err() {
+                break;
+            }
+            if hdr[0] == 0x15 {
+                return Some(CcsVerdict::Indeterminate);
+            }
+            if hdr[0] != 0x16 {
+                break;
+            }
             let len = ((hdr[3] as usize) << 8) | (hdr[4] as usize);
             let mut body = vec![0u8; len.min(16 * 1024)];
-            if sock.read_exact(&mut body).await.is_err() { break; }
+            if sock.read_exact(&mut body).await.is_err() {
+                break;
+            }
             if has_handshake_type(&body, 0x0e) {
                 got_done = true;
                 break;
@@ -84,11 +92,14 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> CcsVerdict {
 fn has_handshake_type(body: &[u8], typ: u8) -> bool {
     let mut i = 0;
     while i + 4 <= body.len() {
-        let msg_len = ((body[i + 1] as usize) << 16)
-            | ((body[i + 2] as usize) << 8)
-            | (body[i + 3] as usize);
-        if body[i] == typ { return true; }
-        if i + 4 + msg_len > body.len() { return false; }
+        let msg_len =
+            ((body[i + 1] as usize) << 16) | ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
+        if body[i] == typ {
+            return true;
+        }
+        if i + 4 + msg_len > body.len() {
+            return false;
+        }
         i += 4 + msg_len;
     }
     false
@@ -133,12 +144,14 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(&[0u8; 32]);
     body.push(0);
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00);
+    body.push(0x01);
+    body.push(0x00);
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -152,7 +165,8 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec

@@ -4,8 +4,8 @@
 //! cipher, not the full server-accepted set. Full enumeration needs
 //! a bisection over ClientHello cipher_suites lists — Phase 2.
 
-use std::time::Duration;
 use serde::Serialize;
+use std::time::Duration;
 
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct KeyExchangeInfo {

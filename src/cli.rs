@@ -139,8 +139,7 @@ pub fn init_tracing(verbose: u8) {
         2 => "debug",
         _ => "trace",
     };
-    let filter = std::env::var("RUST_LOG")
-        .unwrap_or_else(|_| format!("cy_tls={}", level));
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| format!("cy_tls={}", level));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)

@@ -16,7 +16,7 @@ use tokio::time::timeout;
 
 #[derive(Debug, Clone, Default)]
 pub struct DhParams {
-    pub bits:         Option<u32>,
+    pub bits: Option<u32>,
     pub common_prime: bool,
     pub prime_sha256: Option<String>,
 }
@@ -50,16 +50,13 @@ const COMMON_PRIME_HASHES: &[&str] = &[
     "3b67aef36cbb0aa7d3d70b5ce25a4eb19e9c7be8aa70a9aac0ca84ce8c2cb9a3",
     // Cisco IOS DH-1024 (group 2 — RFC 2409)
     "b5fbb3a0e4c6b7d2e8e1a0d8c1f2e0d3b4a5c6e7f8d9a0b1c2d3e4f5a6b7c8d9",
-
     // ── RFC 2409 MODP Group 1 (768-bit) ──
     // Deprecated. Trivially breakable in 2026.
     "c4f9f7d7e6f8a5c4d3e2b1a09f8e7d6c5b4a3928e7d6c5b4a3928e7d6c5b4a39",
-
     // ── RFC 2409 MODP Group 2 (1024-bit) ──
     // Same hash as the Apache default for historical reasons —
     // both are the original Oakley group 2.
     "d52e0ad8b1cee2a8f6b97aa53c9c0e2e5c8e7d7b6a5e4f3a2e1d0c9b8a7f6e5d",
-
     // ── RFC 3526 MODP groups (Apache + nginx fall back to these) ──
     // Group 5 (1536-bit) — weak by 2026 standards.
     "2e6f3a8c1d6e2b8f4a9c5d0e1f3a8b7c2d4e6f8a1b3c5d7e9f0a2b4c6d8e0f1a",
@@ -71,7 +68,6 @@ const COMMON_PRIME_HASHES: &[&str] = &[
     "f0e1d2c3b4a5968778695a4b3c2d1e0f9e8d7c6b5a49382716e5d4c3b2a19088",
     // Group 16 (4096-bit) — flagged informational only.
     "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1",
-
     // ── RFC 5114 published groups (also precomputation-vulnerable) ──
     // 1024-bit MODP group with 160-bit prime order subgroup
     "1f4d4a1e6c2c9b3e5f7a9b1c3d5e7f9a0b2c4d6e8fa0b2c4d6e8fa0b2c4d6e8f",
@@ -91,16 +87,24 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> DhParams {
         let mut buf = Vec::with_capacity(8 * 1024);
         for _ in 0..16 {
             let mut hdr = [0u8; 5];
-            if sock.read_exact(&mut hdr).await.is_err() { break; }
-            if hdr[0] != 0x16 { break; }
+            if sock.read_exact(&mut hdr).await.is_err() {
+                break;
+            }
+            if hdr[0] != 0x16 {
+                break;
+            }
             let len = ((hdr[3] as usize) << 8) | (hdr[4] as usize);
             let mut body = vec![0u8; len.min(16 * 1024)];
-            if sock.read_exact(&mut body).await.is_err() { break; }
+            if sock.read_exact(&mut body).await.is_err() {
+                break;
+            }
             buf.extend_from_slice(&body);
             if let Some(ske) = scan_for_server_key_exchange(&buf) {
                 return parse_dhe_params(&ske);
             }
-            if has_handshake_type(&buf, 0x0e) { break; }
+            if has_handshake_type(&buf, 0x0e) {
+                break;
+            }
         }
         None
     })
@@ -113,10 +117,13 @@ fn scan_for_server_key_exchange(buf: &[u8]) -> Option<Vec<u8>> {
     let mut i = 0;
     while i + 4 <= buf.len() {
         let typ = buf[i];
-        let l = ((buf[i + 1] as usize) << 16) | ((buf[i + 2] as usize) << 8) | (buf[i + 3] as usize);
-        if i + 4 + l > buf.len() { return None; }
+        let l =
+            ((buf[i + 1] as usize) << 16) | ((buf[i + 2] as usize) << 8) | (buf[i + 3] as usize);
+        if i + 4 + l > buf.len() {
+            return None;
+        }
         if typ == 0x0c {
-            return Some(buf[i + 4 .. i + 4 + l].to_vec());
+            return Some(buf[i + 4..i + 4 + l].to_vec());
         }
         i += 4 + l;
     }
@@ -126,9 +133,14 @@ fn scan_for_server_key_exchange(buf: &[u8]) -> Option<Vec<u8>> {
 fn has_handshake_type(buf: &[u8], typ: u8) -> bool {
     let mut i = 0;
     while i + 4 <= buf.len() {
-        let l = ((buf[i + 1] as usize) << 16) | ((buf[i + 2] as usize) << 8) | (buf[i + 3] as usize);
-        if buf[i] == typ { return true; }
-        if i + 4 + l > buf.len() { return false; }
+        let l =
+            ((buf[i + 1] as usize) << 16) | ((buf[i + 2] as usize) << 8) | (buf[i + 3] as usize);
+        if buf[i] == typ {
+            return true;
+        }
+        if i + 4 + l > buf.len() {
+            return false;
+        }
         i += 4 + l;
     }
     false
@@ -141,9 +153,13 @@ fn has_handshake_type(buf: &[u8], typ: u8) -> bool {
 ///   (then signature; we don't need it)
 fn parse_dhe_params(body: &[u8]) -> Option<DhParams> {
     let p_len = ((*body.first()? as usize) << 8) | (*body.get(1)? as usize);
-    let p_bytes = body.get(2 .. 2 + p_len)?;
+    let p_bytes = body.get(2..2 + p_len)?;
     // Strip a leading zero byte (DER sign-padding) before sizing.
-    let stripped = if p_bytes.first() == Some(&0x00) { &p_bytes[1..] } else { p_bytes };
+    let stripped = if p_bytes.first() == Some(&0x00) {
+        &p_bytes[1..]
+    } else {
+        p_bytes
+    };
     let bits = (stripped.len() * 8) as u32;
 
     let mut hasher = Sha256::new();
@@ -192,12 +208,14 @@ fn build_dhe_only_client_hello(sni: &str) -> Vec<u8> {
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(&[0u8; 32]);
     body.push(0);
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00);
+    body.push(0x01);
+    body.push(0x00);
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -211,7 +229,8 @@ fn build_dhe_only_client_hello(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec

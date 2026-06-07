@@ -39,7 +39,7 @@ pub enum PreferenceVerdict {
 }
 
 pub async fn probe(target: &str, sni: &str, deadline: Duration) -> PreferenceVerdict {
-    let order_a: Vec<u16> = TLS12_SUITES.iter().copied().collect();
+    let order_a: Vec<u16> = TLS12_SUITES.to_vec();
     let order_b: Vec<u16> = TLS12_SUITES.iter().rev().copied().collect();
 
     let pick_a = negotiated_with(target, sni, &order_a, deadline).await;
@@ -47,14 +47,14 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> PreferenceVer
 
     match (pick_a, pick_b) {
         (Some(a), Some(b)) if a == b => PreferenceVerdict::ServerPreferred,
-        (Some(_), Some(_))           => PreferenceVerdict::ClientPreferred,
-        _                            => PreferenceVerdict::Indeterminate,
+        (Some(_), Some(_)) => PreferenceVerdict::ClientPreferred,
+        _ => PreferenceVerdict::Indeterminate,
     }
 }
 
 async fn negotiated_with(
     target: &str,
-    sni:    &str,
+    sni: &str,
     suites: &[u16],
     deadline: Duration,
 ) -> Option<u16> {
@@ -65,7 +65,9 @@ async fn negotiated_with(
 
         let mut hdr = [0u8; 5];
         sock.read_exact(&mut hdr).await.ok()?;
-        if hdr[0] != 0x16 { return None; }
+        if hdr[0] != 0x16 {
+            return None;
+        }
         let body_len = ((hdr[3] as usize) << 8) | (hdr[4] as usize);
         let mut body = vec![0u8; body_len.min(2048)];
         sock.read_exact(&mut body).await.ok()?;

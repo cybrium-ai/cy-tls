@@ -29,8 +29,8 @@ pub enum FsBucket {
 impl FsBucket {
     pub fn as_str(self) -> &'static str {
         match self {
-            FsBucket::None   => "none",
-            FsBucket::Some   => "some-clients",
+            FsBucket::None => "none",
+            FsBucket::Some => "some-clients",
             FsBucket::Modern => "modern-clients",
             FsBucket::Robust => "robust",
         }
@@ -38,21 +38,23 @@ impl FsBucket {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Kx { Rsa, Dhe, Ecdhe }
+enum Kx {
+    Rsa,
+    Dhe,
+    Ecdhe,
+}
 
 fn classify_kx(suite: u16) -> Option<Kx> {
     Some(match suite {
         // RSA key exchange (no FS).
-        0x002f | 0x0035 | 0x009c | 0x009d | 0x003c | 0x003d
-        | 0x000a | 0x0005 | 0x0004 | 0x0001 | 0x0002 => Kx::Rsa,
+        0x002f | 0x0035 | 0x009c | 0x009d | 0x003c | 0x003d | 0x000a | 0x0005 | 0x0004 | 0x0001
+        | 0x0002 => Kx::Rsa,
 
         // DHE-RSA (FS but Logjam-relevant).
         0x009e | 0x009f | 0x0033 | 0x0039 | 0x0067 | 0x006b => Kx::Dhe,
 
         // ECDHE family.
-        0xc02b | 0xc02c | 0xc02f | 0xc030
-        | 0xcca8 | 0xcca9
-        | 0xc023 | 0xc024 | 0xc027 | 0xc028
+        0xc02b | 0xc02c | 0xc02f | 0xc030 | 0xcca8 | 0xcca9 | 0xc023 | 0xc024 | 0xc027 | 0xc028
         | 0xc009 | 0xc00a | 0xc013 | 0xc014 => Kx::Ecdhe,
 
         _ => return None,
@@ -60,16 +62,16 @@ fn classify_kx(suite: u16) -> Option<Kx> {
 }
 
 pub fn classify(accepted_at_12: &[u16], tls13_supported: bool) -> FsBucket {
-    let mut has_rsa   = false;
-    let mut has_dhe   = false;
+    let mut has_rsa = false;
+    let mut has_dhe = false;
     let mut has_ecdhe = false;
 
     for s in accepted_at_12 {
         match classify_kx(*s) {
-            Some(Kx::Rsa)   => has_rsa   = true,
-            Some(Kx::Dhe)   => has_dhe   = true,
+            Some(Kx::Rsa) => has_rsa = true,
+            Some(Kx::Dhe) => has_dhe = true,
             Some(Kx::Ecdhe) => has_ecdhe = true,
-            None            => {}
+            None => {}
         }
     }
 
@@ -91,7 +93,11 @@ pub fn classify(accepted_at_12: &[u16], tls13_supported: bool) -> FsBucket {
     }
     // Only ECDHE (or nothing).
     if has_ecdhe {
-        if tls13_supported { FsBucket::Robust } else { FsBucket::Modern }
+        if tls13_supported {
+            FsBucket::Robust
+        } else {
+            FsBucket::Modern
+        }
     } else {
         // No cipher data at all — be conservative.
         FsBucket::None

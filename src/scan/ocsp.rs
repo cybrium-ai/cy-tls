@@ -20,9 +20,12 @@ use tokio::time::timeout;
 
 #[derive(Debug, Clone)]
 pub struct OcspProbe {
-    pub stapled:   bool,
-    pub status:    Option<String>,
-    pub size:      usize,
+    pub stapled: bool,
+    pub status: Option<String>,
+    /// Stapled OCSP payload length in bytes. Recorded for future
+    /// "OCSP response size out-of-band" findings; not yet consumed.
+    #[allow(dead_code)]
+    pub size: usize,
 }
 
 pub async fn probe(target: &str, sni: &str, deadline: Duration) -> OcspProbe {
@@ -68,7 +71,11 @@ pub async fn probe(target: &str, sni: &str, deadline: Duration) -> OcspProbe {
 
     let bytes: Vec<u8> = result.ok().flatten().unwrap_or_default();
     if bytes.is_empty() {
-        return OcspProbe { stapled: false, status: None, size: 0 };
+        return OcspProbe {
+            stapled: false,
+            status: None,
+            size: 0,
+        };
     }
     OcspProbe {
         size: bytes.len(),
@@ -84,9 +91,8 @@ fn scan_for_certificate_status(body: &[u8]) -> Option<Vec<u8>> {
     let mut i = 0;
     while i + 4 <= body.len() {
         let msg_type = body[i];
-        let msg_len = ((body[i + 1] as usize) << 16)
-            | ((body[i + 2] as usize) << 8)
-            | (body[i + 3] as usize);
+        let msg_len =
+            ((body[i + 1] as usize) << 16) | ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
         i += 4;
         if i + msg_len > body.len() {
             return None;
@@ -116,9 +122,8 @@ fn scan_for_certificate_status(body: &[u8]) -> Option<Vec<u8>> {
 fn has_handshake_type(body: &[u8], typ: u8) -> bool {
     let mut i = 0;
     while i + 4 <= body.len() {
-        let msg_len = ((body[i + 1] as usize) << 16)
-            | ((body[i + 2] as usize) << 8)
-            | (body[i + 3] as usize);
+        let msg_len =
+            ((body[i + 1] as usize) << 16) | ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
         if body[i] == typ {
             return true;
         }
@@ -177,18 +182,18 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     extensions.extend_from_slice(&groups_ext);
     extensions.extend_from_slice(&sigalg_ext);
 
-    let suites: [u16; 7] = [
-        0xc02f, 0xc030, 0xc02b, 0xc02c, 0xcca8, 0xcca9, 0x009c,
-    ];
+    let suites: [u16; 7] = [0xc02f, 0xc030, 0xc02b, 0xc02c, 0xcca8, 0xcca9, 0x009c];
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
 
     let mut body = Vec::new();
-    body.push(0x03); body.push(0x03);
+    body.push(0x03);
+    body.push(0x03);
     body.extend_from_slice(&[0u8; 32]);
     body.push(0);
     body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
     body.extend_from_slice(&cipher_bytes);
-    body.push(0x01); body.push(0x00);
+    body.push(0x01);
+    body.push(0x00);
     body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
     body.extend_from_slice(&extensions);
 
@@ -202,7 +207,8 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
 
     let mut rec = Vec::new();
     rec.push(0x16);
-    rec.push(0x03); rec.push(0x03);
+    rec.push(0x03);
+    rec.push(0x03);
     rec.extend_from_slice(&(hs.len() as u16).to_be_bytes());
     rec.extend_from_slice(&hs);
     rec
@@ -231,31 +237,33 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
 /// 11. Read certStatus tag — that's our answer
 fn parse_status(der: &[u8]) -> Option<String> {
     let mut p = Parser::new(der);
-    p.enter_seq()?;                        // OCSPResponse
-    let status = p.read_enumerated()?;     // responseStatus
-    if status != 0 { return None; }
-    p.enter_context_explicit(0)?;          // [0] EXPLICIT
-    p.enter_seq()?;                        // ResponseBytes
-    p.skip_one()?;                         // OBJECT IDENTIFIER responseType
+    p.enter_seq()?; // OCSPResponse
+    let status = p.read_enumerated()?; // responseStatus
+    if status != 0 {
+        return None;
+    }
+    p.enter_context_explicit(0)?; // [0] EXPLICIT
+    p.enter_seq()?; // ResponseBytes
+    p.skip_one()?; // OBJECT IDENTIFIER responseType
     let response_bytes = p.read_octet_string()?;
 
     let mut inner = Parser::new(response_bytes);
-    inner.enter_seq()?;                    // BasicOCSPResponse
-    inner.enter_seq()?;                    // tbsResponseData
-    // version [0] EXPLICIT — optional, may or may not be present.
+    inner.enter_seq()?; // BasicOCSPResponse
+    inner.enter_seq()?; // tbsResponseData
+                        // version [0] EXPLICIT — optional, may or may not be present.
     inner.skip_optional_context(0);
-    inner.skip_one()?;                     // responderID CHOICE
-    inner.skip_one()?;                     // producedAt
-    inner.enter_seq()?;                    // responses SEQUENCE OF
-    inner.enter_seq()?;                    // SingleResponse
-    inner.skip_one()?;                     // certID SEQUENCE
+    inner.skip_one()?; // responderID CHOICE
+    inner.skip_one()?; // producedAt
+    inner.enter_seq()?; // responses SEQUENCE OF
+    inner.enter_seq()?; // SingleResponse
+    inner.skip_one()?; // certID SEQUENCE
 
     // certStatus tag is now at the cursor.
     let (tag, _) = inner.peek_tag_and_len()?;
     Some(match tag {
-        0xA0 | 0x80 => "good".to_string(),     // [0] IMPLICIT NULL
-        0xA1 | 0x81 => "revoked".to_string(),  // [1] IMPLICIT RevokedInfo
-        0xA2 | 0x82 => "unknown".to_string(),  // [2] IMPLICIT UnknownInfo
+        0xA0 | 0x80 => "good".to_string(),    // [0] IMPLICIT NULL
+        0xA1 | 0x81 => "revoked".to_string(), // [1] IMPLICIT RevokedInfo
+        0xA2 | 0x82 => "unknown".to_string(), // [2] IMPLICIT UnknownInfo
         _ => return None,
     })
 }
@@ -267,7 +275,9 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(bytes: &'a [u8]) -> Self { Self { bytes, pos: 0 } }
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, pos: 0 }
+    }
 
     fn peek_tag_and_len(&self) -> Option<(u8, usize)> {
         let tag = *self.bytes.get(self.pos)?;
@@ -278,7 +288,9 @@ impl<'a> Parser<'a> {
             lb
         } else {
             let nl = lb & 0x7f;
-            if nl == 0 || nl > 4 { return None; }
+            if nl == 0 || nl > 4 {
+                return None;
+            }
             let mut v = 0usize;
             for _ in 0..nl {
                 v = (v << 8) | (*self.bytes.get(i)? as usize);
@@ -302,9 +314,13 @@ impl<'a> Parser<'a> {
     fn read_len(&mut self) -> Option<usize> {
         let lb = *self.bytes.get(self.pos)? as usize;
         self.pos += 1;
-        if lb < 0x80 { return Some(lb); }
+        if lb < 0x80 {
+            return Some(lb);
+        }
         let nl = lb & 0x7f;
-        if nl == 0 || nl > 4 { return None; }
+        if nl == 0 || nl > 4 {
+            return None;
+        }
         let mut v = 0usize;
         for _ in 0..nl {
             v = (v << 8) | (*self.bytes.get(self.pos)? as usize);
@@ -315,7 +331,9 @@ impl<'a> Parser<'a> {
 
     fn enter_seq(&mut self) -> Option<()> {
         let (tag, content) = self.read_tlv()?;
-        if tag != 0x30 { return None; }
+        if tag != 0x30 {
+            return None;
+        }
         // Replace our view with the inner content. Anchored by lifetime,
         // we hop the cursor INTO the sequence by resetting bytes+pos.
         self.bytes = content;
@@ -327,7 +345,9 @@ impl<'a> Parser<'a> {
     fn enter_context_explicit(&mut self, n: u8) -> Option<()> {
         let expected = 0xA0 | (n & 0x1F);
         let (tag, content) = self.read_tlv()?;
-        if tag != expected { return None; }
+        if tag != expected {
+            return None;
+        }
         self.bytes = content;
         self.pos = 0;
         Some(())
@@ -335,15 +355,21 @@ impl<'a> Parser<'a> {
 
     fn read_enumerated(&mut self) -> Option<u32> {
         let (tag, content) = self.read_tlv()?;
-        if tag != 0x0A { return None; }
+        if tag != 0x0A {
+            return None;
+        }
         let mut v = 0u32;
-        for b in content { v = (v << 8) | (*b as u32); }
+        for b in content {
+            v = (v << 8) | (*b as u32);
+        }
         Some(v)
     }
 
     fn read_octet_string(&mut self) -> Option<&'a [u8]> {
         let (tag, content) = self.read_tlv()?;
-        if tag != 0x04 { return None; }
+        if tag != 0x04 {
+            return None;
+        }
         Some(content)
     }
 

@@ -165,6 +165,10 @@ mod tests {
         // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV. v0.4.2 added
         // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT. v0.4.3 added
         // TLS-SYMANTEC-DISTRUSTED-CA.
-        assert_eq!(FINDING_CATALOG.len(), 48, "FINDING_CATALOG size drifted from spec");
+        assert_eq!(
+            FINDING_CATALOG.len(),
+            48,
+            "FINDING_CATALOG size drifted from spec"
+        );
     }
 }
