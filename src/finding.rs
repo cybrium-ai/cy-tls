@@ -93,6 +93,7 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("TLS-ROBOT-VULNERABLE",  Severity::Critical, "RSA padding oracle (ROBOT) detected"),
     ("TLS-DROWN-VULNERABLE",  Severity::Critical, "Server shares cert with SSLv2 server (DROWN)"),
     ("TLS-HEARTBLEED",        Severity::Critical, "Heartbleed (CVE-2014-0160) — server leaks memory via heartbeat over-read"),
+    ("TLS-CCS-INJECTION",     Severity::Critical, "OpenSSL CCS Injection (CVE-2014-0224) — server accepts ChangeCipherSpec before handshake completion"),
 
     // ── HSTS ────────────────────────────────────────────────────────
     ("HSTS-MISSING",         Severity::Medium, "Strict-Transport-Security header not sent"),
@@ -143,7 +144,7 @@ mod tests {
 
     #[test]
     fn catalog_count_matches_design_doc() {
-        // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED for the active probe.
-        assert_eq!(FINDING_CATALOG.len(), 38, "FINDING_CATALOG size drifted from spec");
+        // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED; v0.3.0 added TLS-CCS-INJECTION.
+        assert_eq!(FINDING_CATALOG.len(), 39, "FINDING_CATALOG size drifted from spec");
     }
 }

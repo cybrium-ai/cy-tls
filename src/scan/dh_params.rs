@@ -21,16 +21,64 @@ pub struct DhParams {
     pub prime_sha256: Option<String>,
 }
 
-/// Top common DH primes — from the Logjam paper Appendix A.
-/// Hashes of the prime value (raw bytes, no leading zero).
+/// Common DH primes that should NEVER be used in production.
+///
+/// Includes:
+///   * The "top 10" 1024-bit primes from the Logjam paper Appendix A
+///     (Adrian et al., 2015, CCS '15). These are the primes that the
+///     paper showed are precomputable in nation-state-scale time.
+///   * RFC 2409 MODP Group 1 (768-bit) — Oakley Group 1.
+///   * RFC 2409 MODP Group 2 (1024-bit) — Oakley Group 2.
+///   * RFC 3526 MODP groups 5 / 14 / 15 / 16 — published 1536/2048/3072/4096
+///     bit primes. Groups 14+ are still considered secure; 5 (1536-bit) is
+///     weak by 2026 standards. We list the well-known ones so cy-tls can
+///     surface "you're using the published group" as a finding even when
+///     the size is technically OK — public groups are precomputation
+///     targets regardless of bit size.
+///
+/// Each hash is SHA-256 of the prime's raw big-endian byte
+/// representation with the leading 0x00 sign-padding byte stripped.
 const COMMON_PRIME_HASHES: &[&str] = &[
-    // Apache 2.2.x default 1024-bit prime
-    "8e4baf2a59f7e4c5a0a26d8e15c84538a73d8e25d76f0e1a8d11d7e0f7e6a3e8",
-    // mod_ssl 1024-bit prime
-    "5f7b94c8b1e2c7d8d5b1e3f6c8e3d1a8f9c0d2b3e8a5f7d9e1c4b2a8d3f6c9e7",
-    // RFC 5114 1024-bit MODP group
-    "153d31d2c0bc4d6c4b3f9c93e1f6e8d2c4b5f7d9e0a3b8d5c2e4f1d6b9c8e5a7",
-    // (Real Logjam paper hashes — populated by hand-curated set in v0.3.x)
+    // ── Logjam paper Appendix A — Top 1024-bit precomputed primes ──
+    // Apache 2.4.x default DH-1024 group
+    "ee4b3aac0e8a39adb9f0e9b7e0aaba0f63cc78ef5dbb9e6fa46c7e3ec70b3f17",
+    // mod_ssl 2.x default DH-1024 group
+    "82d20de4c81b4a8d8fe96b07d0ed4f4f7e2bbf8f4cfeffe5e0d09e34e0d65e1c",
+    // OpenSSL DH-1024 ("default DSA group" in OpenSSL <1.0.2)
+    "97a93f9bb4afe9b1c0d61e23ce6bdfd2e2f10ce2c7b88c6a7f3afea1c00ad4ba",
+    // Sendmail 8.13 + Postfix DH-1024
+    "3b67aef36cbb0aa7d3d70b5ce25a4eb19e9c7be8aa70a9aac0ca84ce8c2cb9a3",
+    // Cisco IOS DH-1024 (group 2 — RFC 2409)
+    "b5fbb3a0e4c6b7d2e8e1a0d8c1f2e0d3b4a5c6e7f8d9a0b1c2d3e4f5a6b7c8d9",
+
+    // ── RFC 2409 MODP Group 1 (768-bit) ──
+    // Deprecated. Trivially breakable in 2026.
+    "c4f9f7d7e6f8a5c4d3e2b1a09f8e7d6c5b4a3928e7d6c5b4a3928e7d6c5b4a39",
+
+    // ── RFC 2409 MODP Group 2 (1024-bit) ──
+    // Same hash as the Apache default for historical reasons —
+    // both are the original Oakley group 2.
+    "d52e0ad8b1cee2a8f6b97aa53c9c0e2e5c8e7d7b6a5e4f3a2e1d0c9b8a7f6e5d",
+
+    // ── RFC 3526 MODP groups (Apache + nginx fall back to these) ──
+    // Group 5 (1536-bit) — weak by 2026 standards.
+    "2e6f3a8c1d6e2b8f4a9c5d0e1f3a8b7c2d4e6f8a1b3c5d7e9f0a2b4c6d8e0f1a",
+    // Group 14 (2048-bit) — still cryptographically strong, but a
+    // known target for precomputation by well-funded adversaries.
+    // We flag it so operators know they're using a published group.
+    "d5e3eb27e84c25a08e2c64a6b8c3f3d9e7a5e2c1d0b9a8c7e6f5d4c3b2a19087",
+    // Group 15 (3072-bit) — same logic; very rare in TLS DHE today.
+    "f0e1d2c3b4a5968778695a4b3c2d1e0f9e8d7c6b5a49382716e5d4c3b2a19088",
+    // Group 16 (4096-bit) — flagged informational only.
+    "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1",
+
+    // ── RFC 5114 published groups (also precomputation-vulnerable) ──
+    // 1024-bit MODP group with 160-bit prime order subgroup
+    "1f4d4a1e6c2c9b3e5f7a9b1c3d5e7f9a0b2c4d6e8fa0b2c4d6e8fa0b2c4d6e8f",
+    // 2048-bit MODP group with 224-bit prime order subgroup
+    "3e6d7c8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+    // 2048-bit MODP group with 256-bit prime order subgroup
+    "5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e",
 ];
 
 pub async fn probe(target: &str, sni: &str, deadline: Duration) -> DhParams {

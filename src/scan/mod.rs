@@ -13,6 +13,8 @@ mod handshake_sim;
 mod ocsp;
 mod pqc;
 mod vuln_heartbleed;
+mod vuln_goldendoodle;
+mod vuln_ccs;
 mod dh_params;
 mod cert;
 mod cipher;
@@ -214,6 +216,13 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
             }
         }
 
+        // GOLDENDOODLE / Zombie POODLE eligibility — TLS 1.2 + CBC.
+        let cbc_accepted: Vec<u16> = accepted_at_12.iter()
+            .copied()
+            .filter(|s| vuln_goldendoodle::is_cbc_suite(*s))
+            .collect();
+        vuln_goldendoodle::contribute_findings(target, &cbc_accepted, &mut findings);
+
         // BEAST eligibility — TLS 1.0 with any CBC cipher exposes the
         // record-layer chosen-plaintext attack (BEAST, CVE-2011-3389).
         // Modern browsers mitigate client-side (1/n-1 split) but
@@ -271,6 +280,19 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
                 "TLS-HEARTBLEED",
                 target,
                 "Server responded to malformed heartbeat with over-read payload",
+            ));
+        }
+    }
+
+    // OpenSSL CCS Injection (CVE-2014-0224) — TLS 1.2 only.
+    if protocols.tls12.supported {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let v = vuln_ccs::probe(target, host_str, timeout).await;
+        if matches!(v, vuln_ccs::CcsVerdict::Vulnerable) {
+            findings.push(crate::finding::make(
+                "TLS-CCS-INJECTION",
+                target,
+                "Server accepted ChangeCipherSpec before handshake completion",
             ));
         }
     }
