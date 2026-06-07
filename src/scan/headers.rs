@@ -20,6 +20,20 @@ pub struct HeaderInfo {
     /// surfaced for posture dashboards.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions_policy: Option<String>,
+    /// v0.5.33 — Cross-Origin-Opener-Policy. Spectre-class side-
+    /// channel mitigation; controls whether a new window's process
+    /// is isolated from openers across origins.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cross_origin_opener_policy: Option<String>,
+    /// v0.5.33 — Cross-Origin-Embedder-Policy. Requires explicit
+    /// opt-in (require-corp / credentialless) for cross-origin
+    /// subresources; needed for the SharedArrayBuffer API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cross_origin_embedder_policy: Option<String>,
+    /// v0.5.33 — Cross-Origin-Resource-Policy. Server-set declaration
+    /// of which origin-classes may include this resource.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cross_origin_resource_policy: Option<String>,
     /// v0.5.1 — HTTP response compression detection. Populated by
     /// observing `Content-Encoding` on a regular GET. Used to emit
     /// TLS-BREACH-ELIGIBLE — BREACH (CVE-2013-3587) requires the
@@ -183,6 +197,16 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         .or_else(|| response.header("feature-policy"))
     {
         info.permissions_policy = Some(v.to_string());
+    }
+    // v0.5.33 — Cross-Origin isolation headers.
+    if let Some(v) = response.header("cross-origin-opener-policy") {
+        info.cross_origin_opener_policy = Some(v.to_string());
+    }
+    if let Some(v) = response.header("cross-origin-embedder-policy") {
+        info.cross_origin_embedder_policy = Some(v.to_string());
+    }
+    if let Some(v) = response.header("cross-origin-resource-policy") {
+        info.cross_origin_resource_policy = Some(v.to_string());
     }
 
     // v0.5.1 — BREACH eligibility. Observe Content-Encoding directly.
