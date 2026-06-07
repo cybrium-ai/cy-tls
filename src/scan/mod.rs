@@ -28,6 +28,7 @@ mod tls12_crypto;
 mod tls12_features;
 mod tls13;
 mod tls13_0rtt;
+mod tls13_ech;
 mod vuln_ccs;
 mod vuln_goldendoodle;
 mod vuln_goldendoodle_active;
@@ -179,6 +180,11 @@ async fn scan_one(
     if protocols.tls13.supported {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         protocols.tls13.zero_rtt_accepted = tls13_0rtt::probe(target, host_str, timeout).await;
+        // v0.5.7 — ECH (Encrypted ClientHello) advertisement via DNS
+        // HTTPS record (type 65). Single DNS query, no TLS handshake.
+        // Server publishes an ECH config in DNS when it wants clients
+        // to use ECH for the next handshake.
+        protocols.tls13.ech_advertised = tls13_ech::probe(host_str, timeout).await;
     }
 
     if let Some(c) = &certificate {

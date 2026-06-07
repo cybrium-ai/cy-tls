@@ -1,6 +1,6 @@
 [package]
 name        = "cy-tls"
-version     = "0.5.6"
+version     = "0.5.7"
 edition     = "2021"
 rust-version = "1.75"
 description = "Cybrium SSL/TLS posture scanner — full probe suite, JSONL streaming, HSTS preload lookup."
@@ -79,6 +79,11 @@ aes          = "0.8"
 cbc          = { version = "0.1", features = ["block-padding"] }
 hmac         = "0.12"
 sha1         = "0.10"
+
+# v0.5.7 — DNS HTTPS-record (type 65) lookup for ECH advertisement
+# detection. Matches the hickory-resolver version cymail uses in the
+# same Cybrium toolchain.
+hickory-resolver = "0.25"
 
 [dev-dependencies]
 pretty_assertions = "1"
