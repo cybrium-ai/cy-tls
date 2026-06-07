@@ -184,6 +184,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Not yet valid (v0.5.24) ─────────────────────────────────
         "TLS-CERT-NOT-YET-VALID" => vec!["NIST 800-53 SC-17", "RFC 5280 §4.1.2.5"],
 
+        // ── CN-only cert (v0.5.25) ──────────────────────────────────
+        "TLS-CERT-CN-ONLY" => vec!["NIST 800-53 SC-17", "RFC 6125 §6.4.4"],
+
         _ => vec![],
     }
 }

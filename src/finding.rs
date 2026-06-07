@@ -166,6 +166,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── not_before future-dated (v0.5.24) ───────────────────────────
     ("TLS-CERT-NOT-YET-VALID", Severity::High, "Cert not_before is in the future — cert is not yet valid; browsers reject as INVALID. Usually CA-side clock skew or a staged-rollout misconfig where the cert deployed before its validity window opened"),
+
+    // ── CN-only cert (v0.5.25) ──────────────────────────────────────
+    ("TLS-CERT-CN-ONLY", Severity::High, "Cert has no SubjectAltName entries — modern browsers (Chrome 58+, Firefox 48+) don't consult the legacy Subject CN for hostname matching per RFC 6125 §6.4.4. Cert is unusable for TLS validation"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -225,10 +228,11 @@ mod tests {
         // TLS-CERT-MISSING-SERVER-AUTH-EKU. v0.5.21 added
         // TLS-CERT-WEAK-SERIAL-ENTROPY. v0.5.22 added
         // TLS-CERT-LEAF-IS-CA. v0.5.23 added TLS-CERT-NO-AKI.
-        // v0.5.24 added TLS-CERT-NOT-YET-VALID.
+        // v0.5.24 added TLS-CERT-NOT-YET-VALID. v0.5.25 added
+        // TLS-CERT-CN-ONLY.
         assert_eq!(
             FINDING_CATALOG.len(),
-            64,
+            65,
             "FINDING_CATALOG size drifted from spec"
         );
     }

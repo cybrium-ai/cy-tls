@@ -265,6 +265,20 @@ impl CertificateInfo {
                 format!("SAN: {:?}", self.san),
             ));
         }
+        // v0.5.25 — CN-only cert (no SAN entries). Chrome 58 (May 2017)
+        // and Firefox 48 stopped consulting Subject CN for hostname
+        // matching per RFC 6125 §6.4.4. Certs without SAN are invalid
+        // for modern browsers regardless of what's in the CN.
+        if self.san.is_empty() && self.subject.contains("CN=") {
+            findings.push(make(
+                "TLS-CERT-CN-ONLY",
+                host,
+                format!(
+                    "Cert has no SubjectAltName entries — modern browsers (Chrome 58+, Firefox 48+) won't match hostnames against the legacy Subject CN per RFC 6125 §6.4.4. Subject was: {}",
+                    self.subject,
+                ),
+            ));
+        }
         // v0.5.18 — dangerous wildcard policy. CA/B Forum BR §3.2.2.6
         // prohibits wildcard certs on public suffixes (*.com, *.co.uk,
         // etc.). RFC 6125 §6.4.3 also says wildcards may only replace
