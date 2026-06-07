@@ -84,6 +84,11 @@ pub struct CertificateInfo {
     /// non-self-signed certs so chain validators can disambiguate
     /// among multiple roots with the same issuer DN.
     pub has_authority_key_identifier: bool,
+    /// v0.5.26 — true when the cert carries a SubjectKeyIdentifier
+    /// extension (RFC 5280 §4.2.1.2, OID 2.5.29.14). MUST be present
+    /// on all CA certs, SHOULD be present on end-entity. Informational
+    /// posture signal.
+    pub has_subject_key_identifier: bool,
 }
 
 impl CertificateInfo {
@@ -409,6 +414,7 @@ fn parse_leaf(
     let serial_entropy_bits = serial_entropy_bits(tbs.raw_serial());
     let basic_constraints_ca = basic_constraints_ca_bit(&cert);
     let has_authority_key_identifier = has_aki_extension(&cert);
+    let has_subject_key_identifier = has_ski_extension(&cert);
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -439,6 +445,7 @@ fn parse_leaf(
         serial_entropy_bits,
         basic_constraints_ca,
         has_authority_key_identifier,
+        has_subject_key_identifier,
         ocsp_stapled,
         ocsp_status,
     })
@@ -603,6 +610,22 @@ fn has_aki_extension(cert: &X509Certificate) -> bool {
         if matches!(
             ext.parsed_extension(),
             ParsedExtension::AuthorityKeyIdentifier(_)
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
+/// True when the cert carries a SubjectKeyIdentifier extension
+/// (RFC 5280 §4.2.1.2, OID 2.5.29.14). Mandatory on CA certs,
+/// recommended on end-entity. Informational signal.
+fn has_ski_extension(cert: &X509Certificate) -> bool {
+    use x509_parser::extensions::ParsedExtension;
+    for ext in cert.extensions() {
+        if matches!(
+            ext.parsed_extension(),
+            ParsedExtension::SubjectKeyIdentifier(_)
         ) {
             return true;
         }
