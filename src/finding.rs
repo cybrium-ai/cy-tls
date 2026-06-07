@@ -136,6 +136,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── HTTP/2 Rapid Reset eligibility (v0.5.9) ─────────────────────
     ("TLS-HTTP2-RAPID-RESET-ELIGIBLE", Severity::Low, "Server HTTP/2 SETTINGS lacks MAX_CONCURRENT_STREAMS or sets it ≥ 1024 — eligible surface for CVE-2023-44487 Rapid Reset CPU-exhaustion DoS. Passive eligibility check only (no flood traffic sent); confirmation requires rate-limit testing on RST_STREAM frames"),
+
+    // ── CT log diversity (v0.5.11) ──────────────────────────────────
+    ("TLS-CT-INSUFFICIENT-DIVERSITY", Severity::Low, "Embedded SCTs in the leaf cert come from fewer than 2 distinct CT log operators — Chrome's CT policy (Sep 2022 onwards) requires ≥2 INDEPENDENT operators to defeat a single-operator collusion attack on the log"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -186,10 +189,11 @@ mod tests {
         // v0.5.0 added TLS-GOLDENDOODLE-ACTIVE. v0.5.1 added
         // TLS-BREACH-ELIGIBLE. v0.5.2 added TLS-NO-EXTENDED-MASTER-SECRET.
         // v0.5.5 added TLS-H2C-UPGRADE-ACCEPTED. v0.5.9 added
-        // TLS-HTTP2-RAPID-RESET-ELIGIBLE.
+        // TLS-HTTP2-RAPID-RESET-ELIGIBLE. v0.5.11 added
+        // TLS-CT-INSUFFICIENT-DIVERSITY.
         assert_eq!(
             FINDING_CATALOG.len(),
-            54,
+            55,
             "FINDING_CATALOG size drifted from spec"
         );
     }

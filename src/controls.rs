@@ -127,6 +127,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             vec!["NIST 800-53 SC-5", "CVE-2023-44487", "RFC 7540 §6.5.2"]
         }
 
+        // ── CT log diversity (v0.5.11) ──────────────────────────────
+        "TLS-CT-INSUFFICIENT-DIVERSITY" => vec![
+            "RFC 6962",
+            "CA/B Forum BR §7.1.2.2",
+            "Chromium CT Policy 2022-09",
+        ],
+
         _ => vec![],
     }
 }

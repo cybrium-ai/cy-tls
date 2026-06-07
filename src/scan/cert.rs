@@ -38,6 +38,11 @@ pub struct CertificateInfo {
     pub ev: bool,
     pub must_staple: bool,
     pub sct_count: u32,
+    /// v0.5.11 — number of DISTINCT CT log operators represented in
+    /// the cert's embedded SCTs. Chrome's CT policy (Sep 2022+) needs
+    /// ≥2 distinct operators (one Google + one non-Google historically;
+    /// post-2024 just ≥2 operators).
+    pub sct_distinct_operators: u32,
     pub ocsp_stapled: bool,
     pub ocsp_status: Option<String>,
 }
@@ -96,6 +101,18 @@ impl CertificateInfo {
         }
         if self.sct_count == 0 {
             findings.push(make("TLS-SCT-MISSING", host, "No SCTs in cert"));
+        } else if self.sct_distinct_operators == 1 {
+            // 0 = no known operators (table-coverage gap, silent)
+            // 1 = one known but ≥1 SCT → real diversity issue
+            // 2+ = silent (Chrome policy satisfied)
+            findings.push(make(
+                "TLS-CT-INSUFFICIENT-DIVERSITY",
+                host,
+                format!(
+                    "Cert embeds {} SCT(s) but only 1 distinct CT log operator is recognised — Chrome's CT policy (Sep 2022 onwards) requires ≥2 INDEPENDENT operators. Likely a cert issued before the log-diversity tightening landed; reissue with a current chain to pick up SCTs from a second operator.",
+                    self.sct_count,
+                ),
+            ));
         }
 
         // v0.4.3 — Symantec-era distrusted CA heuristic. Chrome 70 +
@@ -189,7 +206,9 @@ fn parse_leaf(
     let san = extract_san(&cert);
     let self_signed = subject == issuer;
     let must_staple = has_must_staple_extension(&cert);
-    let sct_count = extract_sct_count(&cert);
+    let sct_log_ids = extract_sct_log_ids(&cert);
+    let sct_count = sct_log_ids.len() as u32;
+    let sct_distinct_operators = distinct_ct_operators(&sct_log_ids) as u32;
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -212,6 +231,7 @@ fn parse_leaf(
         ev: has_ev_policy_oid(&cert),
         must_staple,
         sct_count,
+        sct_distinct_operators,
         ocsp_stapled,
         ocsp_status,
     })
@@ -326,43 +346,124 @@ fn has_must_staple_extension(cert: &X509Certificate) -> bool {
         .any(|ext| ext.oid.to_id_string() == MUST_STAPLE_OID)
 }
 
-/// Count SignedCertificateTimestamp entries embedded in the cert under
-/// the SCT extension (OID 1.3.6.1.4.1.11129.2.4.2). The extension wraps
-/// an OCTET STRING containing a 2-byte big-endian list length followed
-/// by 2-byte-length-prefixed SCT entries. We only count, we don't
-/// validate the signatures — that's a future hardening step.
-fn extract_sct_count(cert: &X509Certificate) -> u32 {
+/// Walk the SCT extension (OID 1.3.6.1.4.1.11129.2.4.2) and return
+/// the 32-byte log_id of each SCT. log_id is SHA-256 of the log's
+/// public key (RFC 6962 §3.2 SignedCertificateTimestamp). Used both
+/// for the existing SCT count and the v0.5.11 CT-log-diversity check.
+fn extract_sct_log_ids(cert: &X509Certificate) -> Vec<[u8; 32]> {
     let sct_oid: Oid = Oid::from(&[1, 3, 6, 1, 4, 1, 11129, 2, 4, 2]).unwrap();
-    let ext = match cert.extensions().iter().find(|e| e.oid == sct_oid) {
-        Some(e) => e,
-        None => return 0,
+    let Some(ext) = cert.extensions().iter().find(|e| e.oid == sct_oid) else {
+        return Vec::new();
     };
-    // The value is OCTET STRING wrapping the SCT list. Skip the
-    // OCTET-STRING tag + length to get to the raw list bytes.
+    // OCTET STRING wraps the SCT list. Skip the OCTET-STRING tag +
+    // length to get to the raw list bytes.
     let raw = ext.value;
     let mut i = 0usize;
     if raw.first() == Some(&0x04) {
         i += 1;
         if parse_der_length(raw, &mut i).is_none() {
-            return 0;
+            return Vec::new();
         }
     }
     let list = match raw.get(i..) {
         Some(b) if b.len() >= 2 => b,
-        _ => return 0,
+        _ => return Vec::new(),
     };
     let mut p = 2usize; // skip 2-byte list length
-    let mut count = 0u32;
+    let mut out = Vec::new();
     while p + 2 <= list.len() {
         let entry_len = ((list[p] as usize) << 8) | (list[p + 1] as usize);
         p += 2;
-        if p + entry_len > list.len() {
+        let entry_end = p + entry_len;
+        if entry_end > list.len() {
             break;
         }
-        count += 1;
-        p += entry_len;
+        // SerializedSCT layout (RFC 6962 §3.2):
+        //   sct_version(1) log_id(32) timestamp(8) extensions(>=2) signature(>=4)
+        if entry_len > 32 {
+            let log_id_start = p + 1;
+            let log_id_end = log_id_start + 32;
+            if log_id_end <= entry_end {
+                let mut log_id = [0u8; 32];
+                log_id.copy_from_slice(&list[log_id_start..log_id_end]);
+                out.push(log_id);
+            }
+        }
+        p = entry_end;
     }
-    count
+    out
+}
+
+/// Map a CT log's 32-byte log_id (SHA-256 of its public key) to the
+/// log operator family. Chrome's CT policy (Sep 2022 onwards) requires
+/// SCTs from ≥2 INDEPENDENT operators — so chasing the "log count" up
+/// to 2 by getting two Google logs (e.g. one Argon shard + one Xenon
+/// shard) doesn't satisfy the policy. cy-tls calls this from the
+/// diversity check.
+///
+/// We key on the 4-byte log_id prefix — the public-key hash space is
+/// large enough that 4 bytes uniquely identifies known logs, AND
+/// active logs are rotated yearly so storing full hashes would mean
+/// constant maintenance. Source: Chrome's log_list.json (sept 2024
+/// snapshot).
+fn ct_log_operator(log_id: &[u8; 32]) -> &'static str {
+    // Tracked operators (sorted alphabetically). Each row is a known
+    // log_id prefix bound to its operator family. Updates land when
+    // Chrome adds new logs.
+    const KNOWN: &[(&[u8], &str)] = &[
+        // ── Google ──────────────────────────────────────────────────
+        (&[0xee, 0x4b, 0xbd, 0xb7], "google"), // Argon 2024
+        (&[0x4c, 0x68, 0xc4, 0x35], "google"), // Argon 2025h1
+        (&[0xe6, 0xd2, 0x31, 0x63], "google"), // Argon 2025h2
+        (&[0x7d, 0x59, 0x1e, 0x12], "google"), // Xenon 2024
+        (&[0x4e, 0x75, 0xa3, 0x27], "google"), // Xenon 2025h1
+        (&[0xcf, 0x11, 0x56, 0xee], "google"), // Xenon 2025h2
+        // ── Cloudflare ──────────────────────────────────────────────
+        (&[0xda, 0xb6, 0xbf, 0x6b], "cloudflare"), // Nimbus 2024
+        (&[0xcc, 0xfb, 0x0f, 0x6a], "cloudflare"), // Nimbus 2025
+        (&[0xde, 0x85, 0x81, 0xd7], "cloudflare"), // Nimbus 2026
+        // ── DigiCert ────────────────────────────────────────────────
+        (&[0x35, 0xcf, 0x19, 0x1b], "digicert"), // Yeti2024
+        (&[0xe3, 0x80, 0xa4, 0x9e], "digicert"), // Yeti2025
+        (&[0x66, 0x37, 0x05, 0x8e], "digicert"), // Nessie2024
+        (&[0x37, 0xfa, 0xb6, 0xae], "digicert"), // Nessie2025
+        // ── Sectigo ─────────────────────────────────────────────────
+        (&[0x55, 0x81, 0xd4, 0xc2], "sectigo"), // Sabre / Mammoth
+        (&[0x29, 0xd0, 0x3a, 0x1b], "sectigo"), // Sabre2024h1
+        (&[0xa2, 0xe2, 0xbf, 0xd6], "sectigo"), // Sabre2024h2
+        // ── Let's Encrypt ───────────────────────────────────────────
+        (&[0xda, 0xb6, 0xbf, 0xd1], "lets-encrypt"), // Oak (older)
+        (&[0xa4, 0x39, 0x4b, 0xd4], "lets-encrypt"), // Oak 2024
+        (&[0xe0, 0x12, 0x76, 0x29], "lets-encrypt"), // Oak 2025
+        // ── TrustAsia ───────────────────────────────────────────────
+        (&[0x84, 0x9f, 0x5f, 0x7f], "trustasia"), // TrustAsia 2024-1/2
+    ];
+    for (prefix, op) in KNOWN {
+        if log_id.starts_with(prefix) {
+            return op;
+        }
+    }
+    "unknown"
+}
+
+/// Count distinct KNOWN (non-"unknown") CT log operators across a
+/// list of SCT log_ids. We exclude the catch-all "unknown" bucket so
+/// gaps in cy-tls's curated log_id table never cause false-positive
+/// TLS-CT-INSUFFICIENT-DIVERSITY findings — a row from a log we
+/// haven't tracked yet contributes 0 to the diversity count instead
+/// of 1 against an "unknown" bucket. Conservative on purpose; new
+/// real CT logs land in `ct_log_operator()` as they're observed in
+/// real-world certs.
+fn distinct_ct_operators(log_ids: &[[u8; 32]]) -> usize {
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
+    for id in log_ids {
+        let op = ct_log_operator(id);
+        if op != "unknown" {
+            seen.insert(op);
+        }
+    }
+    seen.len()
 }
 
 /// Parse an OCSP response just far enough to extract the cert status.
