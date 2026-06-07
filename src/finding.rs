@@ -118,6 +118,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Distrusted CA chains (v0.4.3) ───────────────────────────────
     ("TLS-SYMANTEC-DISTRUSTED-CA", Severity::High, "Leaf certificate is issued by a Symantec-era CA family distrusted by Chrome / Firefox since 2018 — connections from modern browsers will fail"),
+
+    // ── Lucky13 timing-side-channel (v0.4.5) ────────────────────────
+    ("TLS-LUCKY13-LIKELY", Severity::Medium, "Server fingerprint matches an OpenSSL release predating the constant-time CBC decrypt fix (1.0.1g, April 2014) and accepts TLS 1.2 + CBC ciphers — Lucky13 (CVE-2013-0169) timing-side-channel plaintext recovery is likely feasible"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -164,10 +167,10 @@ mod tests {
         // v0.3.6 added TLS-CBC-ORACLE-FAMILY-FP. v0.4.1 added TLS-CIPHER-CLIENT-PREFERENCE-ONLY,
         // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV. v0.4.2 added
         // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT. v0.4.3 added
-        // TLS-SYMANTEC-DISTRUSTED-CA.
+        // TLS-SYMANTEC-DISTRUSTED-CA. v0.4.5 added TLS-LUCKY13-LIKELY.
         assert_eq!(
             FINDING_CATALOG.len(),
-            48,
+            49,
             "FINDING_CATALOG size drifted from spec"
         );
     }

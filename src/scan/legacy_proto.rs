@@ -28,14 +28,36 @@ pub async fn probe_version(
     matches!(result, Ok(Ok(true)))
 }
 
-/// SSLv2 probe — separate record-layer format from TLS.
-/// Returns true if the server responds with a v2 SERVER-HELLO.
-pub async fn probe_sslv2(target: &str, deadline: Duration) -> bool {
-    let result = timeout(deadline, attempt_sslv2(target)).await;
-    matches!(result, Ok(Ok(true)))
+/// Outcome of the SSLv2 SERVER-HELLO probe.
+#[derive(Debug, Default, Clone)]
+pub struct Sslv2Probe {
+    /// True when the server returned an SSLv2 SERVER-HELLO.
+    pub supported: bool,
+    /// Cipher-spec IDs (3 bytes each, packed into u32) that the server
+    /// listed in its SERVER-HELLO. Empty when `supported` is false or
+    /// the body was unparseable.
+    pub server_cipher_specs: Vec<u32>,
+    /// True when at least one EXPORT-grade SSLv2 cipher (40-bit RSA /
+    /// 40-bit RC2/RC4) appears in `server_cipher_specs`. The original
+    /// DROWN paper labels this "Special DROWN" — the practical decryption
+    /// cost drops from days to minutes when the SSLv2 server offers
+    /// EXPORT ciphers.
+    pub special_drown_eligible: bool,
 }
 
-async fn attempt_sslv2(target: &str) -> std::io::Result<bool> {
+/// SSLv2 probe — separate record-layer format from TLS. Returns
+/// `supported = true` when the server responds with a v2 SERVER-HELLO,
+/// plus the parsed cipher list for richer DROWN reporting.
+pub async fn probe_sslv2(target: &str, deadline: Duration) -> Sslv2Probe {
+    timeout(deadline, attempt_sslv2(target))
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .unwrap_or_default()
+}
+
+async fn attempt_sslv2(target: &str) -> std::io::Result<Sslv2Probe> {
+    let mut out = Sslv2Probe::default();
     let mut sock = TcpStream::connect(target).await?;
     let hello = build_sslv2_client_hello();
     sock.write_all(&hello).await?;
@@ -44,24 +66,65 @@ async fn attempt_sslv2(target: &str) -> std::io::Result<bool> {
     // (no padding); remaining 15 bits are the length.
     let mut header = [0u8; 2];
     if sock.read_exact(&mut header).await.is_err() {
-        return Ok(false);
+        return Ok(out);
     }
     // Reject TLS-style alert (0x15) or handshake (0x16) — those mean
     // the server interpreted our bytes as TLS, not SSLv2.
     if matches!(header[0], 0x15 | 0x16) {
-        return Ok(false);
+        return Ok(out);
     }
     // V2 records have top bit set on the length-byte-high.
     if header[0] & 0x80 == 0 {
-        return Ok(false);
+        return Ok(out);
     }
     let len = (((header[0] & 0x7f) as usize) << 8) | (header[1] as usize);
     let mut body = vec![0u8; len.min(2048)];
     if sock.read_exact(&mut body).await.is_err() {
-        return Ok(false);
+        return Ok(out);
     }
     // SERVER-HELLO message type is 0x04.
-    Ok(body.first() == Some(&0x04))
+    if body.first() != Some(&0x04) {
+        return Ok(out);
+    }
+    out.supported = true;
+
+    // Parse SERVER-HELLO body per SSLv2 spec §2.1:
+    //   msg_type(1) = 0x04
+    //   SESSION-ID-HIT(1)
+    //   CERTIFICATE-TYPE(1)
+    //   SERVER-VERSION(2)
+    //   CERTIFICATE-LENGTH(2)
+    //   CIPHER-SPECS-LENGTH(2)
+    //   CONNECTION-ID-LENGTH(2)
+    //   CERTIFICATE(certificate_length bytes)
+    //   CIPHER-SPECS(cipher_specs_length bytes — list of 3-byte IDs)
+    //   CONNECTION-ID(connection_id_length bytes)
+    if body.len() >= 11 {
+        let cert_len = ((body[5] as usize) << 8) | (body[6] as usize);
+        let cipher_specs_len = ((body[7] as usize) << 8) | (body[8] as usize);
+        let cipher_start = 11 + cert_len;
+        let cipher_end = cipher_start + cipher_specs_len;
+        if cipher_end <= body.len() && cipher_specs_len % 3 == 0 {
+            for chunk in body[cipher_start..cipher_end].chunks_exact(3) {
+                let id = ((chunk[0] as u32) << 16) | ((chunk[1] as u32) << 8) | (chunk[2] as u32);
+                out.server_cipher_specs.push(id);
+                if is_export_sslv2_cipher(id) {
+                    out.special_drown_eligible = true;
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// True for SSLv2 cipher specs that use a 40-bit effective key — the
+/// "Special DROWN" surface that makes plaintext recovery affordable on
+/// commodity hardware. The three 3-byte specs flagged here are:
+///   0x020080 RC4_128_EXPORT40_WITH_MD5
+///   0x040080 RC2_128_CBC_EXPORT40_WITH_MD5
+///   0x060040 DES_64_CBC_WITH_MD5 (56-bit effective — also feasible)
+fn is_export_sslv2_cipher(id: u32) -> bool {
+    matches!(id, 0x020080 | 0x040080 | 0x060040)
 }
 
 /// Build a minimal SSLv2 CLIENT-HELLO message.

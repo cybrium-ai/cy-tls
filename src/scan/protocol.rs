@@ -43,6 +43,11 @@ pub struct ProtocolSupport {
     /// ClientHello probe in scan::pqc.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pqc: Option<super::pqc::PqcInfo>,
+    /// v0.4.5 — "Special DROWN" eligibility flag. True when the SSLv2
+    /// SERVER-HELLO listed at least one EXPORT-grade cipher
+    /// (40-bit RC4/RC2 or 56-bit DES), which drops the practical
+    /// DROWN decryption cost from days to minutes.
+    pub sslv2_special_drown: bool,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -70,11 +75,23 @@ impl ProtocolSupport {
             // textbook DROWN (CVE-2016-0800) exposure — the SSLv2
             // server provides the Bleichenbacher oracle that decrypts
             // TLS sessions on a different port sharing the same key.
-            findings.push(make(
-                "TLS-DROWN-VULNERABLE",
-                host,
-                "SSLv2 enabled on the same host — DROWN attack surface",
-            ));
+            // v0.4.5: evidence text reports whether EXPORT-grade ciphers
+            // were observed in the SSLv2 SERVER-HELLO (Special DROWN —
+            // CVE-2016-0703 — drops decryption cost from days to mins).
+            let evidence = if self.sslv2_special_drown {
+                format!(
+                    "Special DROWN surface: SSLv2 + EXPORT cipher accepted. Server-offered SSLv2 ciphers: {:?}",
+                    self.sslv2.ciphers,
+                )
+            } else if !self.sslv2.ciphers.is_empty() {
+                format!(
+                    "SSLv2 enabled on the same host — DROWN attack surface. Server-offered SSLv2 ciphers: {:?}",
+                    self.sslv2.ciphers,
+                )
+            } else {
+                "SSLv2 enabled on the same host — DROWN attack surface".to_string()
+            };
+            findings.push(make("TLS-DROWN-VULNERABLE", host, evidence));
         }
         if self.sslv3.supported {
             findings.push(make("TLS-SSLV3", host, "SSLv3 ClientHello accepted"));
@@ -148,7 +165,16 @@ pub async fn enumerate(
         super::legacy_proto::probe_version(target, &host_str, 0x03, 0x02, per_probe).await;
     report.sslv3.supported =
         super::legacy_proto::probe_version(target, &host_str, 0x03, 0x00, per_probe).await;
-    report.sslv2.supported = super::legacy_proto::probe_sslv2(target, per_probe).await;
+    let sslv2_probe = super::legacy_proto::probe_sslv2(target, per_probe).await;
+    report.sslv2.supported = sslv2_probe.supported;
+    if sslv2_probe.supported {
+        report.sslv2.ciphers = sslv2_probe
+            .server_cipher_specs
+            .iter()
+            .map(|id| sslv2_cipher_name(*id).to_string())
+            .collect();
+        report.sslv2_special_drown = sslv2_probe.special_drown_eligible;
+    }
 
     timings.client_hello = hello_start.elapsed().as_millis() as u64;
     Ok(report)
@@ -224,4 +250,20 @@ fn split_host_port(target: &str) -> anyhow::Result<(String, u16)> {
         .rsplit_once(':')
         .ok_or_else(|| anyhow::anyhow!("target must be host:port"))?;
     Ok((h.to_string(), p.parse()?))
+}
+
+/// Friendly name for an SSLv2 cipher spec (3-byte ID packed into u32).
+fn sslv2_cipher_name(id: u32) -> &'static str {
+    match id {
+        0x010080 => "SSL_CK_RC4_128_WITH_MD5",
+        0x020080 => "SSL_CK_RC4_128_EXPORT40_WITH_MD5",
+        0x030080 => "SSL_CK_RC2_128_CBC_WITH_MD5",
+        0x040080 => "SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5",
+        0x050080 => "SSL_CK_IDEA_128_CBC_WITH_MD5",
+        0x060040 => "SSL_CK_DES_64_CBC_WITH_MD5",
+        0x0700c0 => "SSL_CK_DES_192_EDE3_CBC_WITH_MD5",
+        0x000000 => "SSL_CK_NULL",
+        0x000001 => "SSL_CK_NULL_WITH_MD5",
+        _ => "SSL_CK_UNKNOWN",
+    }
 }

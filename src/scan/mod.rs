@@ -504,6 +504,31 @@ async fn scan_one(
         }
     }
 
+    // v0.4.5 — Lucky13 (CVE-2013-0169) fingerprint-confirmed verdict.
+    // Fires when TLS 1.2 + CBC is accepted AND the HTTP Server banner
+    // reveals an OpenSSL release predating the constant-time CBC
+    // decrypt fix (1.0.1g, April 2014). Same pattern as the v0.3.7
+    // CVE-2016-2107 fingerprint tier, with its own version-band table.
+    if !cbc_for_padding_oracle.is_empty() {
+        let lucky13_confirmed = server_fingerprint
+            .as_ref()
+            .map(|fp| fp.openssl_vulnerable_lucky13)
+            .unwrap_or(false);
+        if lucky13_confirmed {
+            let openssl_v = server_fingerprint
+                .as_ref()
+                .and_then(|fp| fp.openssl_version.as_deref())
+                .unwrap_or("?");
+            findings.push(crate::finding::make(
+                "TLS-LUCKY13-LIKELY",
+                target,
+                format!(
+                    "Server banner advertises OpenSSL/{openssl_v} — predates the Lucky13 constant-time CBC decrypt fix (1.0.1g, April 2014). TLS 1.2 + CBC accepted on this endpoint. Timing-side-channel plaintext recovery is likely feasible.",
+                ),
+            ));
+        }
+    }
+
     // GOLDENDOODLE / Zombie POODLE high-confidence finding — fires
     // when TLS 1.2 + CBC is accepted AND the server fingerprint matches
     // a known-vulnerable vendor (Citrix NetScaler / F5 BIG-IP / Sangfor

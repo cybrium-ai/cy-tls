@@ -95,6 +95,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "Chromium Root Program Policy",
         ],
 
+        // ── Lucky13 timing side-channel (v0.4.5) ────────────────────
+        "TLS-LUCKY13-LIKELY" => vec!["NIST 800-53 SC-13", "PCI DSS 4.2.1", "CVE-2013-0169"],
+
         _ => vec![],
     }
 }

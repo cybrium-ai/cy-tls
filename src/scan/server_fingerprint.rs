@@ -36,6 +36,12 @@ pub struct ServerFingerprint {
     /// to upgrade the eligibility-tier TLS-OPENSSL-PADDING-ORACLE
     /// finding to a fingerprint-confirmed verdict.
     pub openssl_vulnerable_padding_oracle: bool,
+    /// True if `openssl_version` precedes the constant-time CBC decrypt
+    /// rewrite that hardened OpenSSL against the Lucky13 (CVE-2013-0169)
+    /// timing distinguisher — landed in 1.0.1g (April 2014). Used by
+    /// the orchestrator to emit TLS-LUCKY13-LIKELY when TLS 1.2 + CBC
+    /// is also accepted on the endpoint.
+    pub openssl_vulnerable_lucky13: bool,
 }
 
 pub fn classify(server_header: Option<&str>) -> ServerFingerprint {
@@ -108,10 +114,95 @@ pub fn classify(server_header: Option<&str>) -> ServerFingerprint {
         if !v.is_empty() {
             out.openssl_version = Some(v.to_string());
             out.openssl_vulnerable_padding_oracle = is_openssl_vulnerable_to_cve_2016_2107(v);
+            out.openssl_vulnerable_lucky13 = is_openssl_vulnerable_to_lucky13(v);
         }
     }
 
     out
+}
+
+/// Lucky13 (CVE-2013-0169) — TLS CBC timing side-channel that recovers
+/// plaintext bytes via response-time differences in MAC verification.
+/// OpenSSL hardened against it with a constant-time CBC decrypt path
+/// that landed in 1.0.1g (released 2014-04-07). The fix also went into
+/// the 1.0.0 line as 1.0.0m and the 0.9.8 line as 0.9.8za.
+///
+/// Decision table by major.minor branch:
+///   0.9.*  — 0.9.8za and later have the fix; earlier are vulnerable.
+///            The release letter sequence ends at 'z' then continues
+///            'za', 'zb', 'zc', ..., 'zh'. So:
+///              0.9.8 [a..z] → vulnerable
+///              0.9.8 z then [a..h] (e.g. "za", "zb") → fixed
+///   1.0.0* — fixed at 'm'. Earlier letters vulnerable.
+///   1.0.1* — fixed at 'g'. Earlier letters vulnerable.
+///   1.0.2* — never shipped with the bug (post-fix branch).
+///   1.1.*  — never shipped with the bug.
+///   3.*    — modern, not vulnerable.
+///   anything we can't parse — not flagged (avoid false-positive).
+pub fn is_openssl_vulnerable_to_lucky13(v: &str) -> bool {
+    let core = v.split(['-', '+']).next().unwrap_or(v);
+    let parts: Vec<&str> = core.split('.').collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    let major: u32 = parts[0].parse().unwrap_or(0);
+    let minor: u32 = parts[1].parse().unwrap_or(0);
+    let patch_raw = parts.get(2).copied().unwrap_or("0");
+
+    // Split patch number from letter suffix.
+    let mut num_end = 0;
+    for (i, ch) in patch_raw.char_indices() {
+        if ch.is_ascii_digit() {
+            num_end = i + ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    let patch_num: u32 = patch_raw[..num_end].parse().unwrap_or(0);
+    let suffix = &patch_raw[num_end..];
+
+    match (major, minor, patch_num) {
+        // pre-0.9 — well past their EOL but treat as vulnerable.
+        (0, n, _) if n < 9 => true,
+
+        // 0.9.8 line — fixed at 0.9.8za. Earlier single-letter sequences
+        // (a..z) plus a bare 0.9.8 are vulnerable.
+        (0, 9, 8) => {
+            // Sort the suffix into one of:
+            //   "" (bare) → vulnerable
+            //   single letter [a..z] → vulnerable
+            //   two-letter starting with 'z' → fixed (0.9.8za and later)
+            if suffix.is_empty() {
+                return true;
+            }
+            let chars: Vec<char> = suffix.chars().collect();
+            if chars.len() == 1 {
+                return true; // 0.9.8a..0.9.8z all vulnerable
+            }
+            // 0.9.8zX — z-series starting at "za" is the fix.
+            if chars[0] == 'z' {
+                return false;
+            }
+            false
+        }
+
+        // 1.0.0 line — fixed at 1.0.0m.
+        (1, 0, 0) => match suffix.chars().next() {
+            None => true,
+            Some(c) => c < 'm',
+        },
+
+        // 1.0.1 line — fixed at 1.0.1g.
+        (1, 0, 1) => match suffix.chars().next() {
+            None => true,
+            Some(c) => c < 'g',
+        },
+
+        // 1.0.2+ — branched off after the fix landed.
+        (1, 0, 2) | (1, 1, _) | (3, _, _) => false,
+
+        _ => false,
+    }
 }
 
 /// CVE-2016-2107: OpenSSL AES-NI padding oracle. Fixed in 1.0.1t and
@@ -275,5 +366,71 @@ mod openssl_version_tests {
         let fp = classify(Some("nginx/1.18.0"));
         assert_eq!(fp.openssl_version, None);
         assert!(!fp.openssl_vulnerable_padding_oracle);
+        assert!(!fp.openssl_vulnerable_lucky13);
+    }
+
+    // ── Lucky13 (CVE-2013-0169) decision table ──────────────────────
+
+    #[test]
+    fn lucky13_pre_098za_vulnerable() {
+        assert!(is_openssl_vulnerable_to_lucky13("0.9.8"));
+        assert!(is_openssl_vulnerable_to_lucky13("0.9.8a"));
+        assert!(is_openssl_vulnerable_to_lucky13("0.9.8y"));
+        assert!(is_openssl_vulnerable_to_lucky13("0.9.8z"));
+    }
+
+    #[test]
+    fn lucky13_098za_and_later_fixed() {
+        assert!(!is_openssl_vulnerable_to_lucky13("0.9.8za"));
+        assert!(!is_openssl_vulnerable_to_lucky13("0.9.8zh"));
+    }
+
+    #[test]
+    fn lucky13_100_line() {
+        assert!(is_openssl_vulnerable_to_lucky13("1.0.0"));
+        assert!(is_openssl_vulnerable_to_lucky13("1.0.0a"));
+        assert!(is_openssl_vulnerable_to_lucky13("1.0.0l")); // last vuln
+        assert!(!is_openssl_vulnerable_to_lucky13("1.0.0m")); // fix
+        assert!(!is_openssl_vulnerable_to_lucky13("1.0.0t"));
+    }
+
+    #[test]
+    fn lucky13_101_line() {
+        assert!(is_openssl_vulnerable_to_lucky13("1.0.1"));
+        assert!(is_openssl_vulnerable_to_lucky13("1.0.1a"));
+        assert!(is_openssl_vulnerable_to_lucky13("1.0.1f")); // last vuln
+        assert!(!is_openssl_vulnerable_to_lucky13("1.0.1g")); // fix
+        assert!(!is_openssl_vulnerable_to_lucky13("1.0.1t"));
+    }
+
+    #[test]
+    fn lucky13_post_fix_branches_clean() {
+        assert!(!is_openssl_vulnerable_to_lucky13("1.0.2"));
+        assert!(!is_openssl_vulnerable_to_lucky13("1.0.2g"));
+        assert!(!is_openssl_vulnerable_to_lucky13("1.1.0"));
+        assert!(!is_openssl_vulnerable_to_lucky13("1.1.1w"));
+        assert!(!is_openssl_vulnerable_to_lucky13("3.0.0"));
+        assert!(!is_openssl_vulnerable_to_lucky13("3.2.1"));
+    }
+
+    #[test]
+    fn lucky13_garbage_input() {
+        assert!(!is_openssl_vulnerable_to_lucky13(""));
+        assert!(!is_openssl_vulnerable_to_lucky13("garbage"));
+    }
+
+    #[test]
+    fn lucky13_fips_suffix_stripped() {
+        assert!(is_openssl_vulnerable_to_lucky13("1.0.1e-fips"));
+        assert!(!is_openssl_vulnerable_to_lucky13("1.0.1g-fips"));
+    }
+
+    #[test]
+    fn classify_populates_lucky13_field() {
+        let fp = classify(Some("Apache/2.4.7 (Ubuntu) OpenSSL/1.0.1e"));
+        assert_eq!(fp.openssl_version.as_deref(), Some("1.0.1e"));
+        assert!(fp.openssl_vulnerable_lucky13);
+        let fp = classify(Some("nginx/1.18.0 (Ubuntu) OpenSSL/1.0.1g"));
+        assert!(!fp.openssl_vulnerable_lucky13);
     }
 }
