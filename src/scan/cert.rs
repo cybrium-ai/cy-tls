@@ -190,6 +190,21 @@ impl CertificateInfo {
                 format!("SAN: {:?}", self.san),
             ));
         }
+        // v0.5.18 — dangerous wildcard policy. CA/B Forum BR §3.2.2.6
+        // prohibits wildcard certs on public suffixes (*.com, *.co.uk,
+        // etc.). RFC 6125 §6.4.3 also says wildcards may only replace
+        // the LEFTMOST label, so *.*.example.com is invalid. Most public
+        // CAs reject such requests but private / internal CAs sometimes
+        // issue these.
+        for san in &self.san {
+            if let Some(reason) = dangerous_wildcard_reason(san) {
+                findings.push(make(
+                    "TLS-CERT-DANGEROUS-WILDCARD",
+                    host,
+                    format!("SAN {san:?}: {reason}"),
+                ));
+            }
+        }
     }
 }
 
@@ -825,5 +840,97 @@ mod ev_oid_tests {
                 "EV OID table missing {must_contain}",
             );
         }
+    }
+}
+
+/// Detect dangerous wildcard SAN patterns. Returns a human-readable
+/// reason when the wildcard is policy-violating, or None when the SAN
+/// is safe.
+///
+/// Checks:
+///   - Multi-label wildcard (e.g. *.*.example.com) violates RFC 6125
+///     §6.4.3 — wildcards may only replace the LEFTMOST label.
+///   - Wildcard at a public-suffix level (*.com, *.co.uk, *.io, etc.)
+///     violates CA/B Forum BR §3.2.2.6. We use a curated list of
+///     common TLDs + eTLDs; not exhaustive but covers the cases that
+///     show up in practice.
+fn dangerous_wildcard_reason(san: &str) -> Option<&'static str> {
+    if !san.starts_with("*.") {
+        return None;
+    }
+    let rest = &san[2..];
+    // Multi-label wildcard.
+    if rest.contains('*') {
+        return Some(
+            "multi-label wildcard (RFC 6125 §6.4.3 — wildcards may only replace the leftmost label)",
+        );
+    }
+    // Public-suffix wildcard. The list below covers IANA-root TLDs
+    // most-commonly seen plus the eTLD-style multi-label suffixes
+    // browsers also treat as "public" via the Public Suffix List
+    // project.
+    let lower = rest.to_ascii_lowercase();
+    if PUBLIC_SUFFIX_BLOCKLIST.iter().any(|s| lower == *s) {
+        return Some(
+            "wildcard at a public-suffix level (CA/B Forum BR §3.2.2.6 prohibits this — would cover every subdomain on the TLD)",
+        );
+    }
+    None
+}
+
+/// Curated subset of the Public Suffix List — the suffixes a wildcard
+/// must NOT directly attach to. Browsers / CAs source from the full
+/// PSL (publicsuffix.org). cy-tls keeps a curated cut focused on the
+/// suffixes that appear in real-world cert issuance attempts.
+const PUBLIC_SUFFIX_BLOCKLIST: &[&str] = &[
+    // ── Generic TLDs ────────────────────────────────────────────────
+    "com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "name", "pro", "museum", "aero",
+    "coop", "jobs", "mobi", "tel", "travel", "asia", "cat", "xxx",
+    // ── Common new gTLDs that often appear in misissuance attempts ──
+    "io", "ai", "app", "dev", "cloud", "tech", "online", "site", "shop", "store", "blog", "news",
+    "tv", "fm", "me", "co",
+    // ── Country-code TLDs (most populous) ───────────────────────────
+    "uk", "us", "de", "fr", "it", "es", "nl", "se", "ch", "be", "at", "dk", "no", "fi", "ie", "pl",
+    "ru", "ua", "cz", "gr", "hu", "ro", "tr", "il", "br", "ar", "mx", "cl", "co", "pe", "ca", "au",
+    "nz", "jp", "kr", "cn", "tw", "hk", "sg", "my", "th", "id", "ph", "vn", "in", "pk", "bd", "lk",
+    "za", "eg", "ng", "ke", "ma",
+    // ── Common eTLD-style multi-label public suffixes ───────────────
+    "co.uk", "ac.uk", "gov.uk", "org.uk", "ltd.uk", "plc.uk", "net.uk", "com.au", "net.au",
+    "org.au", "edu.au", "gov.au", "co.nz", "net.nz", "org.nz", "ac.nz", "govt.nz", "co.in",
+    "net.in", "org.in", "ac.in", "gov.in", "edu.in", "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp",
+    "co.kr", "ne.kr", "or.kr", "go.kr", "co.za", "org.za", "net.za", "gov.za", "com.br", "net.br",
+    "org.br", "gov.br", "edu.br", "com.mx", "net.mx", "org.mx", "gob.mx", "com.sg", "net.sg",
+    "org.sg", "gov.sg", "com.hk", "net.hk", "org.hk", "com.tw", "net.tw", "org.tw", "gov.tw",
+];
+
+#[cfg(test)]
+mod dangerous_wildcard_tests {
+    use super::dangerous_wildcard_reason;
+
+    #[test]
+    fn safe_wildcards() {
+        assert!(dangerous_wildcard_reason("*.example.com").is_none());
+        assert!(dangerous_wildcard_reason("*.foo.example.com").is_none());
+        assert!(dangerous_wildcard_reason("example.com").is_none()); // no wildcard
+    }
+
+    #[test]
+    fn rejects_public_suffix_wildcards() {
+        assert!(dangerous_wildcard_reason("*.com").is_some());
+        assert!(dangerous_wildcard_reason("*.io").is_some());
+        assert!(dangerous_wildcard_reason("*.co.uk").is_some());
+        assert!(dangerous_wildcard_reason("*.gov").is_some());
+    }
+
+    #[test]
+    fn rejects_multi_label_wildcards() {
+        assert!(dangerous_wildcard_reason("*.*.example.com").is_some());
+        assert!(dangerous_wildcard_reason("*.foo.*.example.com").is_some());
+    }
+
+    #[test]
+    fn case_insensitive_match() {
+        assert!(dangerous_wildcard_reason("*.COM").is_some());
+        assert!(dangerous_wildcard_reason("*.Co.UK").is_some());
     }
 }

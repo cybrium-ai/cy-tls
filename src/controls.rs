@@ -150,6 +150,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Cert chain depth (v0.5.17) ──────────────────────────────
         "TLS-CERT-CHAIN-DEEP" => vec!["NIST 800-53 SC-17", "RFC 5280 §6"],
 
+        // ── SAN wildcard policy (v0.5.18) ───────────────────────────
+        "TLS-CERT-DANGEROUS-WILDCARD" => vec![
+            "NIST 800-53 SC-17",
+            "CA/B Forum BR §3.2.2.6",
+            "RFC 6125 §6.4.3",
+        ],
+
         _ => vec![],
     }
 }
