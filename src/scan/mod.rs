@@ -3,6 +3,7 @@
 //! The orchestrator runs every probe module against each target,
 //! aggregates findings, and emits the result on stdout.
 
+mod caa;
 mod cert;
 mod cipher;
 mod cipher_enum;
@@ -78,6 +79,10 @@ pub struct ScanReport {
     pub forward_secrecy: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fallback_scsv: Option<&'static str>,
+    /// v0.5.10 — observed CAA records at the target hostname.
+    /// Empty / omitted when no CAA published.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub caa_records: Vec<String>,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -760,6 +765,14 @@ async fn scan_one(
         }
     }
 
+    // v0.5.10 — DNS CAA lookup. Single DNS query, surfaces governance
+    // signal in the JSON output. No finding emitted (CAA presence is
+    // informational, not a posture defect).
+    let caa_records = {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        caa::lookup(host_str, timeout).await
+    };
+
     let elapsed_ms = start.elapsed().as_millis() as u64;
     Ok(ScanReport {
         target: target.into(),
@@ -777,6 +790,7 @@ async fn scan_one(
         cipher_preference,
         forward_secrecy: forward_secrecy_bucket,
         fallback_scsv: fallback_scsv_status,
+        caa_records,
     })
 }
 
@@ -830,6 +844,7 @@ fn stub_report(
         cipher_preference: None,
         forward_secrecy: None,
         fallback_scsv: None,
+        caa_records: Vec::new(),
     }
 }
 

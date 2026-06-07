@@ -84,6 +84,7 @@ fn failed_report(target: String) -> ScanReport {
         cipher_preference: None,
         forward_secrecy: None,
         fallback_scsv: None,
+        caa_records: Vec::new(),
     }
 }
 
