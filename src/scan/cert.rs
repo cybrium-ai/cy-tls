@@ -95,6 +95,13 @@ pub struct CertificateInfo {
     /// when a subject/issuer mismatch is observed somewhere in the
     /// chain. Always true for chain_length ≤ 1.
     pub chain_order_correct: bool,
+    /// v0.5.30 — AIA caIssuers URL parsed from the cert's Authority
+    /// Information Access extension (RFC 5280 §4.2.2.1 accessMethod
+    /// id-ad-caIssuers 1.3.6.1.5.5.7.48.2). Points at the issuer cert
+    /// URL; clients use it to AIA-fetch missing intermediates. None
+    /// when AIA is absent or contains no caIssuers entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aia_ca_issuers_url: Option<String>,
 }
 
 impl CertificateInfo {
@@ -423,6 +430,7 @@ fn parse_leaf(
     let sct_count = sct_log_ids.len() as u32;
     let sct_distinct_operators = distinct_ct_operators(&sct_log_ids) as u32;
     let ocsp_responder_url = extract_ocsp_responder_url(&cert);
+    let aia_ca_issuers_url = extract_aia_ca_issuers_url(&cert);
     let has_server_auth_eku = has_extended_key_usage_server_auth(&cert);
     let crl_distribution_points = extract_crl_distribution_points(&cert);
     let serial_entropy_bits = serial_entropy_bits(tbs.raw_serial());
@@ -463,6 +471,7 @@ fn parse_leaf(
         // Optimistic default; cert::inspect overwrites with the real
         // chain-order verdict once it has the full chain in scope.
         chain_order_correct: true,
+        aia_ca_issuers_url,
         ocsp_stapled,
         ocsp_status,
     })
@@ -570,17 +579,28 @@ fn extract_san(cert: &X509Certificate) -> Vec<String> {
     out
 }
 
-/// Extract the OCSP responder URL from the cert's Authority
-/// Information Access extension (RFC 5280 §4.2.2.1, OID
-/// 1.3.6.1.5.5.7.1.1). AIA is a SEQUENCE OF AccessDescription;
-/// each AccessDescription has an accessMethod OID and an accessLocation
-/// GeneralName (typically URI). The accessMethod for OCSP is
-/// id-ad-ocsp = 1.3.6.1.5.5.7.48.1. Returns the first OCSP URI found,
-/// or None when AIA is absent / contains no OCSP entry.
+/// Extract the OCSP responder URL from the cert's AIA extension.
+/// Thin wrapper around extract_aia_url() for the OCSP accessMethod.
 fn extract_ocsp_responder_url(cert: &X509Certificate) -> Option<String> {
+    let ocsp_oid: Oid = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 1]).unwrap();
+    extract_aia_url(cert, &ocsp_oid)
+}
+
+/// Extract the caIssuers URL from the cert's AIA extension. Points
+/// at the issuer cert; clients use this to AIA-fetch missing
+/// intermediates.
+fn extract_aia_ca_issuers_url(cert: &X509Certificate) -> Option<String> {
+    let ca_issuers_oid: Oid = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 2]).unwrap();
+    extract_aia_url(cert, &ca_issuers_oid)
+}
+
+/// Walk the cert's AuthorityInformationAccess extension (RFC 5280
+/// §4.2.2.1, OID 1.3.6.1.5.5.7.1.1) and return the first URI
+/// AccessDescription whose accessMethod matches `wanted_oid`. Returns
+/// None when AIA is absent or contains no matching entry.
+fn extract_aia_url(cert: &X509Certificate, wanted_oid: &Oid) -> Option<String> {
     use x509_parser::extensions::{AccessDescription, ParsedExtension};
     use x509_parser::prelude::GeneralName;
-    let ocsp_oid: Oid = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 1]).unwrap();
     for ext in cert.extensions() {
         if let ParsedExtension::AuthorityInfoAccess(aia) = ext.parsed_extension() {
             for AccessDescription {
@@ -588,7 +608,7 @@ fn extract_ocsp_responder_url(cert: &X509Certificate) -> Option<String> {
                 access_location,
             } in aia.accessdescs.iter()
             {
-                if *access_method == ocsp_oid {
+                if access_method == wanted_oid {
                     if let GeneralName::URI(uri) = access_location {
                         return Some(uri.to_string());
                     }
