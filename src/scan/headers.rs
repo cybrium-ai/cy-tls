@@ -52,6 +52,16 @@ pub struct HeaderInfo {
     /// explicit declaration is good posture.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub referrer_policy: Option<String>,
+    /// v0.5.37 — X-Frame-Options. Legacy clickjacking mitigation
+    /// (DENY / SAMEORIGIN). Mostly subsumed by CSP frame-ancestors
+    /// but still honoured by browsers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x_frame_options: Option<String>,
+    /// v0.5.37 — X-Content-Type-Options. The canonical "nosniff"
+    /// directive blocks MIME-sniffing-based content-type attacks
+    /// (CSS-as-script, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x_content_type_options: Option<String>,
     /// v0.5.1 — HTTP response compression detection. Populated by
     /// observing `Content-Encoding` on a regular GET. Used to emit
     /// TLS-BREACH-ELIGIBLE — BREACH (CVE-2013-3587) requires the
@@ -236,6 +246,14 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
     // v0.5.36 — Referrer-Policy.
     if let Some(v) = response.header("referrer-policy") {
         info.referrer_policy = Some(v.to_string());
+    }
+    // v0.5.37 — X-Frame-Options + X-Content-Type-Options (legacy
+    // but still honoured by all major browsers).
+    if let Some(v) = response.header("x-frame-options") {
+        info.x_frame_options = Some(v.to_string());
+    }
+    if let Some(v) = response.header("x-content-type-options") {
+        info.x_content_type_options = Some(v.to_string());
     }
 
     // v0.5.1 — BREACH eligibility. Observe Content-Encoding directly.
