@@ -502,27 +502,48 @@ async fn scan_one(
         }
     }
 
-    // v0.5.9 — HTTP/2 Rapid Reset (CVE-2023-44487) eligibility.
-    // Passive: read the server's SETTINGS frame, look for
-    // MAX_CONCURRENT_STREAMS. Absent or >=1024 → eligible. Only
-    // meaningful when the server speaks h2; rustls handshake to
-    // h2-only ALPN inside the probe filters non-h2 endpoints.
+    // v0.5.9 + v0.5.12 — HTTP/2 SETTINGS posture. Single probe captures
+    // ALL recognised SETTINGS in one round-trip; orchestrator derives
+    // multiple findings from the same observation:
+    //   - v0.5.9: MAX_CONCURRENT_STREAMS absent or ≥1024 → Rapid Reset
+    //             (CVE-2023-44487) eligibility.
+    //   - v0.5.12: MAX_HEADER_LIST_SIZE absent or > 1 MiB → HPACK-bomb
+    //              / header-flood DoS surface.
     if matches!(protocols.alpn.as_deref(), Some("h2")) {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
-        if let http2_rapid_reset::RapidResetVerdict::Eligible { observed_limit } =
-            http2_rapid_reset::probe(target, host_str, timeout).await
-        {
-            let evidence = match observed_limit {
-                None => "Server SETTINGS frame did not advertise MAX_CONCURRENT_STREAMS — RFC 7540 §6.5.2 makes the value effectively unlimited.".to_string(),
-                Some(n) => format!(
+        if let Some(observed) = http2_rapid_reset::probe_settings(target, host_str, timeout).await {
+            // Rapid Reset eligibility.
+            let rr_evidence = match observed.max_concurrent_streams {
+                None => Some("Server SETTINGS frame did not advertise MAX_CONCURRENT_STREAMS — RFC 7540 §6.5.2 makes the value effectively unlimited.".to_string()),
+                Some(n) if n >= 1024 => Some(format!(
                     "Server SETTINGS advertises SETTINGS_MAX_CONCURRENT_STREAMS = {n} (≥1024 threshold). High limit broadens the Rapid Reset (CVE-2023-44487) attack surface."
-                ),
+                )),
+                Some(_) => None,
             };
-            findings.push(crate::finding::make(
-                "TLS-HTTP2-RAPID-RESET-ELIGIBLE",
-                target,
-                evidence,
-            ));
+            if let Some(ev) = rr_evidence {
+                findings.push(crate::finding::make(
+                    "TLS-HTTP2-RAPID-RESET-ELIGIBLE",
+                    target,
+                    ev,
+                ));
+            }
+
+            // v0.5.12 — Header-list-size DoS surface.
+            const ONE_MIB: u32 = 1024 * 1024;
+            let hl_evidence = match observed.max_header_list_size {
+                None => Some("Server SETTINGS frame did not advertise MAX_HEADER_LIST_SIZE — per RFC 7540 §6.5.2 the limit is effectively unlimited, exposing the HPACK-bomb / large-header DoS surface.".to_string()),
+                Some(n) if n > ONE_MIB => Some(format!(
+                    "Server SETTINGS advertises SETTINGS_MAX_HEADER_LIST_SIZE = {n} bytes (>1 MiB). High limit broadens the HPACK-bomb / header-flood DoS surface."
+                )),
+                Some(_) => None,
+            };
+            if let Some(ev) = hl_evidence {
+                findings.push(crate::finding::make(
+                    "TLS-HTTP2-NO-HEADER-LIST-LIMIT",
+                    target,
+                    ev,
+                ));
+            }
         }
     }
 

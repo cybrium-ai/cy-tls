@@ -139,6 +139,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── CT log diversity (v0.5.11) ──────────────────────────────────
     ("TLS-CT-INSUFFICIENT-DIVERSITY", Severity::Low, "Embedded SCTs in the leaf cert come from fewer than 2 distinct CT log operators — Chrome's CT policy (Sep 2022 onwards) requires ≥2 INDEPENDENT operators to defeat a single-operator collusion attack on the log"),
+
+    // ── HTTP/2 header-list DoS surface (v0.5.12) ────────────────────
+    ("TLS-HTTP2-NO-HEADER-LIST-LIMIT", Severity::Low, "Server HTTP/2 SETTINGS lacks MAX_HEADER_LIST_SIZE or sets it > 1 MiB — exposes the HPACK-bomb / large-header-flood DoS family (CVE-2019-9516 et al)"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -190,10 +193,11 @@ mod tests {
         // TLS-BREACH-ELIGIBLE. v0.5.2 added TLS-NO-EXTENDED-MASTER-SECRET.
         // v0.5.5 added TLS-H2C-UPGRADE-ACCEPTED. v0.5.9 added
         // TLS-HTTP2-RAPID-RESET-ELIGIBLE. v0.5.11 added
-        // TLS-CT-INSUFFICIENT-DIVERSITY.
+        // TLS-CT-INSUFFICIENT-DIVERSITY. v0.5.12 added
+        // TLS-HTTP2-NO-HEADER-LIST-LIMIT.
         assert_eq!(
             FINDING_CATALOG.len(),
-            55,
+            56,
             "FINDING_CATALOG size drifted from spec"
         );
     }

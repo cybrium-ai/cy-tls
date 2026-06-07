@@ -134,6 +134,11 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "Chromium CT Policy 2022-09",
         ],
 
+        // ── HTTP/2 header-list DoS surface (v0.5.12) ────────────────
+        "TLS-HTTP2-NO-HEADER-LIST-LIMIT" => {
+            vec!["NIST 800-53 SC-5", "CVE-2019-9516", "RFC 7540 §6.5.2"]
+        }
+
         _ => vec![],
     }
 }
