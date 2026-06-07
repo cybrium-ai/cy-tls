@@ -18,6 +18,7 @@ mod vuln_ccs;
 mod vuln_ticketbleed;
 mod vuln_padding_oracle;
 mod vuln_robot;
+mod server_fingerprint;
 mod dh_params;
 mod cert;
 mod cipher;
@@ -52,6 +53,11 @@ pub struct ScanReport {
     /// passes `--handshake-sim` (because it adds 30 handshakes per host).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub handshake_simulation: Vec<handshake_sim::ClientSim>,
+    /// HTTP Server-header fingerprint of the product behind the TLS
+    /// endpoint, if one was exposed. Used to upgrade eligibility-tier
+    /// findings to higher-confidence findings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_fingerprint: Option<server_fingerprint::ServerFingerprint>,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -344,6 +350,38 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
     let headers = headers::fetch(target, timeout).unwrap_or_default();
     headers.contribute_findings(target, &mut findings);
 
+    // Server-header fingerprint — one extra HEAD request, cheap.
+    let server_fingerprint = {
+        let raw = server_fingerprint::fetch(target, timeout);
+        let fp = server_fingerprint::classify(raw.as_deref());
+        if fp.raw.is_none() { None } else { Some(fp) }
+    };
+
+    // GOLDENDOODLE / Zombie POODLE high-confidence finding — fires
+    // when TLS 1.2 + CBC is accepted AND the server fingerprint matches
+    // a known-vulnerable vendor (Citrix NetScaler / F5 BIG-IP / Sangfor
+    // / older Cisco). Combines the existing eligibility signal with
+    // fingerprint evidence for an operator-actionable severity bump.
+    if let Some(fp) = &server_fingerprint {
+        if fp.known_cbc_oracle_family {
+            let cbc_in_use = !skip_cipher_enum && protocols.tls12.ciphers.iter().any(|c|
+                c.contains("_CBC_") || c.ends_with("_SHA") || c.ends_with("_SHA256") || c.ends_with("_SHA384")
+            );
+            if cbc_in_use {
+                findings.push(crate::finding::make(
+                    "TLS-CBC-ORACLE-FAMILY-FP",
+                    target,
+                    format!(
+                        "Server fingerprint '{}' + TLS 1.2 CBC cipher accepted — high-confidence GOLDENDOODLE / Zombie POODLE / Lucky13 exposure. Family: {}{}",
+                        fp.raw.as_deref().unwrap_or("?"),
+                        fp.family.as_deref().unwrap_or("?"),
+                        fp.version.as_deref().map(|v| format!(" v{v}")).unwrap_or_default(),
+                    ),
+                ));
+            }
+        }
+    }
+
     // Handshake simulation matrix — opt-in (--handshake-sim). Emulates
     // 30 reference clients (browsers, Java, OpenSSL) and reports what
     // each negotiates. Adds ~30 handshakes per host.
@@ -367,6 +405,7 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         timings_ms: timings,
         findings,
         handshake_simulation,
+        server_fingerprint,
     })
 }
 
@@ -411,6 +450,7 @@ fn stub_report(target: String, ip: Option<String>, elapsed_ms: u64, findings: Ve
         timings_ms: timing::Timings::default(),
         findings,
         handshake_simulation: Vec::new(),
+        server_fingerprint: None,
     }
 }
 

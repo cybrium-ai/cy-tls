@@ -72,6 +72,7 @@ fn failed_report(target: String) -> ScanReport {
         timings_ms: Default::default(),
         findings: vec![crate::finding::make("TLS-UNREACHABLE", &target, "Scan internal error")],
         handshake_simulation: Vec::new(),
+        server_fingerprint: None,
     }
 }
 
