@@ -45,6 +45,13 @@ pub struct CertificateInfo {
     pub sct_distinct_operators: u32,
     pub ocsp_stapled: bool,
     pub ocsp_status: Option<String>,
+    /// v0.5.15 — OCSP responder URL parsed from the cert's
+    /// Authority Information Access extension (RFC 5280 §4.2.2.1
+    /// accessMethod id-ad-ocsp 1.3.6.1.5.5.7.48.1). Populated when
+    /// the leaf cert publishes one. Used in v0.5.16+ to perform an
+    /// active OCSP query when the server didn't staple a response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocsp_responder_url: Option<String>,
 }
 
 impl CertificateInfo {
@@ -224,6 +231,7 @@ fn parse_leaf(
     let sct_log_ids = extract_sct_log_ids(&cert);
     let sct_count = sct_log_ids.len() as u32;
     let sct_distinct_operators = distinct_ct_operators(&sct_log_ids) as u32;
+    let ocsp_responder_url = extract_ocsp_responder_url(&cert);
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -247,6 +255,7 @@ fn parse_leaf(
         must_staple,
         sct_count,
         sct_distinct_operators,
+        ocsp_responder_url,
         ocsp_stapled,
         ocsp_status,
     })
@@ -352,6 +361,35 @@ fn extract_san(cert: &X509Certificate) -> Vec<String> {
         }
     }
     out
+}
+
+/// Extract the OCSP responder URL from the cert's Authority
+/// Information Access extension (RFC 5280 §4.2.2.1, OID
+/// 1.3.6.1.5.5.7.1.1). AIA is a SEQUENCE OF AccessDescription;
+/// each AccessDescription has an accessMethod OID and an accessLocation
+/// GeneralName (typically URI). The accessMethod for OCSP is
+/// id-ad-ocsp = 1.3.6.1.5.5.7.48.1. Returns the first OCSP URI found,
+/// or None when AIA is absent / contains no OCSP entry.
+fn extract_ocsp_responder_url(cert: &X509Certificate) -> Option<String> {
+    use x509_parser::extensions::{AccessDescription, ParsedExtension};
+    use x509_parser::prelude::GeneralName;
+    let ocsp_oid: Oid = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 1]).unwrap();
+    for ext in cert.extensions() {
+        if let ParsedExtension::AuthorityInfoAccess(aia) = ext.parsed_extension() {
+            for AccessDescription {
+                access_method,
+                access_location,
+            } in aia.accessdescs.iter()
+            {
+                if *access_method == ocsp_oid {
+                    if let GeneralName::URI(uri) = access_location {
+                        return Some(uri.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 fn has_must_staple_extension(cert: &X509Certificate) -> bool {
