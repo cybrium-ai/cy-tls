@@ -139,6 +139,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             vec!["NIST 800-53 SC-5", "CVE-2019-9516", "RFC 7540 §6.5.2"]
         }
 
+        // ── Cert lifetime BR cap (v0.5.13) ──────────────────────────
+        "TLS-CERT-EXCESSIVE-LIFETIME" => vec![
+            "NIST 800-53 SC-17",
+            "CA/B Forum BR §6.3.2",
+            "Apple Root Cert Policy 2020-09",
+            "Chromium Root Program Policy",
+        ],
+
         _ => vec![],
     }
 }

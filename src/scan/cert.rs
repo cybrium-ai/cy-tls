@@ -62,6 +62,21 @@ impl CertificateInfo {
                 format!("{} days remaining", self.days_remaining),
             ));
         }
+        // v0.5.13 — CA/B Forum Baseline Requirements §6.3.2: server
+        // cert validity capped at 397 days (398 days inclusive of
+        // start day). Browsers (Apple Sep 2020, then Chrome / Mozilla)
+        // hard-enforce this; certs issued > 398 days after 2020-09-01
+        // are not accepted by modern browsers.
+        let lifetime_days = (self.not_after - self.not_before).num_days();
+        if lifetime_days > 398 {
+            findings.push(make(
+                "TLS-CERT-EXCESSIVE-LIFETIME",
+                host,
+                format!(
+                    "Cert lifetime is {lifetime_days} days (not_before..not_after) — exceeds the CA/B Forum BR §6.3.2 cap of 398 days enforced by browsers since Sep 2020. Certs issued after that date with this lifetime won't validate in Chrome / Firefox / Safari."
+                ),
+            ));
+        }
         if self.self_signed {
             findings.push(make("TLS-CERT-SELF-SIGNED", host, "Issuer matches subject"));
         }

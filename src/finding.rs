@@ -142,6 +142,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── HTTP/2 header-list DoS surface (v0.5.12) ────────────────────
     ("TLS-HTTP2-NO-HEADER-LIST-LIMIT", Severity::Low, "Server HTTP/2 SETTINGS lacks MAX_HEADER_LIST_SIZE or sets it > 1 MiB — exposes the HPACK-bomb / large-header-flood DoS family (CVE-2019-9516 et al)"),
+
+    // ── Cert lifetime BR cap (v0.5.13) ──────────────────────────────
+    ("TLS-CERT-EXCESSIVE-LIFETIME", Severity::Medium, "Leaf certificate lifetime exceeds CA/B Forum BR §6.3.2 cap of 398 days (Apple / Chrome / Mozilla enforce this in browsers since Sep 2020) — connections from modern browsers will be rejected if the cert was issued after the cap took effect"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -194,10 +197,11 @@ mod tests {
         // v0.5.5 added TLS-H2C-UPGRADE-ACCEPTED. v0.5.9 added
         // TLS-HTTP2-RAPID-RESET-ELIGIBLE. v0.5.11 added
         // TLS-CT-INSUFFICIENT-DIVERSITY. v0.5.12 added
-        // TLS-HTTP2-NO-HEADER-LIST-LIMIT.
+        // TLS-HTTP2-NO-HEADER-LIST-LIMIT. v0.5.13 added
+        // TLS-CERT-EXCESSIVE-LIFETIME.
         assert_eq!(
             FINDING_CATALOG.len(),
-            56,
+            57,
             "FINDING_CATALOG size drifted from spec"
         );
     }
