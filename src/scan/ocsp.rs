@@ -208,61 +208,159 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     rec
 }
 
-/// Approximate OCSP cert-status parse.
+/// Strict OCSP cert-status parse — v0.3.x rewrite that walks the
+/// actual ASN.1 structure rather than searching for OID patterns.
 ///
-/// A loose walker like "find the first 0xA0/0xA1/0xA2 tag" gives false
-/// positives because OCSP DER contains lots of context tags
-/// (responderID [1], version [0], etc.) that match the pattern without
-/// being the certStatus.
+/// OCSPResponse ::= SEQUENCE {
+///     responseStatus       OCSPResponseStatus,
+///     responseBytes    [0] EXPLICIT ResponseBytes OPTIONAL
+/// }
 ///
-/// Strategy: look for the SingleResponse SEQUENCE pattern — certID
-/// SEQUENCE followed by the certStatus CHOICE tag. CertID is itself a
-/// SEQUENCE containing an AlgorithmIdentifier SEQUENCE (which starts
-/// with 0x30, OID 2.16.840.1.101.3.4.2.1 = SHA-256 commonly). When we
-/// find a SEQUENCE-of-SEQUENCE followed by the certStatus byte, we
-/// have it.
-///
-/// Phase 2.1: replace with rasn-ocsp full parse.
+/// We:
+/// 1. Enter the outer SEQUENCE
+/// 2. Read responseStatus ENUMERATED (must be 0 = successful)
+/// 3. Enter [0] EXPLICIT ResponseBytes → SEQUENCE
+/// 4. Skip responseType OID
+/// 5. Enter response OCTET STRING containing BasicOCSPResponse
+/// 6. Enter BasicOCSPResponse SEQUENCE → tbsResponseData SEQUENCE
+/// 7. Skip optional version [0], skip responderID CHOICE, skip
+///    producedAt GeneralizedTime
+/// 8. Enter responses SEQUENCE OF
+/// 9. Enter first SingleResponse SEQUENCE
+/// 10. Skip certID SEQUENCE
+/// 11. Read certStatus tag — that's our answer
 fn parse_status(der: &[u8]) -> Option<String> {
-    // Heuristic that's accurate in practice — locate the SHA-256 OID
-    // bytes for hashAlgorithm (06 09 60 86 48 01 65 03 04 02 01), then
-    // skip past the issuerNameHash + issuerKeyHash + serialNumber +
-    // thisUpdate, and the next context-tag byte should be the
-    // certStatus. We don't bother with strict bounds — return None on
-    // anything ambiguous so a higher-level finding stays clean.
-    const SHA256_OID: &[u8] = &[0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01];
-    let oid_pos = find_subseq(der, SHA256_OID)?;
-    // The issuerNameHash OCTET STRING follows at the next 0x04 tag.
-    let mut i = oid_pos + SHA256_OID.len();
-    // Walk forward over up to 6 ASN.1 elements (params NULL, hash, hash,
-    // INTEGER serial, GeneralizedTime). Each element is `tag len_byte(s)
-    // content`. Long-form lengths handled.
-    for _ in 0..6 {
-        if i + 1 >= der.len() { return None; }
-        i += 1; // skip tag
-        let lb = der[i] as usize;
+    let mut p = Parser::new(der);
+    p.enter_seq()?;                        // OCSPResponse
+    let status = p.read_enumerated()?;     // responseStatus
+    if status != 0 { return None; }
+    p.enter_context_explicit(0)?;          // [0] EXPLICIT
+    p.enter_seq()?;                        // ResponseBytes
+    p.skip_one()?;                         // OBJECT IDENTIFIER responseType
+    let response_bytes = p.read_octet_string()?;
+
+    let mut inner = Parser::new(response_bytes);
+    inner.enter_seq()?;                    // BasicOCSPResponse
+    inner.enter_seq()?;                    // tbsResponseData
+    // version [0] EXPLICIT — optional, may or may not be present.
+    inner.skip_optional_context(0);
+    inner.skip_one()?;                     // responderID CHOICE
+    inner.skip_one()?;                     // producedAt
+    inner.enter_seq()?;                    // responses SEQUENCE OF
+    inner.enter_seq()?;                    // SingleResponse
+    inner.skip_one()?;                     // certID SEQUENCE
+
+    // certStatus tag is now at the cursor.
+    let (tag, _) = inner.peek_tag_and_len()?;
+    Some(match tag {
+        0xA0 | 0x80 => "good".to_string(),     // [0] IMPLICIT NULL
+        0xA1 | 0x81 => "revoked".to_string(),  // [1] IMPLICIT RevokedInfo
+        0xA2 | 0x82 => "unknown".to_string(),  // [2] IMPLICIT UnknownInfo
+        _ => return None,
+    })
+}
+
+/// Minimal DER cursor — enough for the OCSP walk above.
+struct Parser<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Parser<'a> {
+    fn new(bytes: &'a [u8]) -> Self { Self { bytes, pos: 0 } }
+
+    fn peek_tag_and_len(&self) -> Option<(u8, usize)> {
+        let tag = *self.bytes.get(self.pos)?;
+        let mut i = self.pos + 1;
+        let lb = *self.bytes.get(i)? as usize;
         i += 1;
         let len = if lb < 0x80 {
             lb
         } else {
             let nl = lb & 0x7f;
-            if i + nl > der.len() { return None; }
+            if nl == 0 || nl > 4 { return None; }
             let mut v = 0usize;
-            for _ in 0..nl { v = (v << 8) | (der[i] as usize); i += 1; }
+            for _ in 0..nl {
+                v = (v << 8) | (*self.bytes.get(i)? as usize);
+                i += 1;
+            }
             v
         };
-        i += len;
+        let _ = len; // peek only — caller decides what to do
+        Some((tag, i - self.pos))
     }
-    if i >= der.len() { return None; }
-    match der[i] {
-        0x80 => Some("good".to_string()),       // [0] IMPLICIT NULL
-        0xA0 if der.get(i + 1) == Some(&0x00) => Some("good".to_string()),
-        0xA1 | 0x81 => Some("revoked".to_string()),
-        0xA2 | 0x82 => Some("unknown".to_string()),
-        _ => None,
+
+    fn read_tlv(&mut self) -> Option<(u8, &'a [u8])> {
+        let tag = *self.bytes.get(self.pos)?;
+        self.pos += 1;
+        let len = self.read_len()?;
+        let content = self.bytes.get(self.pos..self.pos + len)?;
+        self.pos += len;
+        Some((tag, content))
+    }
+
+    fn read_len(&mut self) -> Option<usize> {
+        let lb = *self.bytes.get(self.pos)? as usize;
+        self.pos += 1;
+        if lb < 0x80 { return Some(lb); }
+        let nl = lb & 0x7f;
+        if nl == 0 || nl > 4 { return None; }
+        let mut v = 0usize;
+        for _ in 0..nl {
+            v = (v << 8) | (*self.bytes.get(self.pos)? as usize);
+            self.pos += 1;
+        }
+        Some(v)
+    }
+
+    fn enter_seq(&mut self) -> Option<()> {
+        let (tag, content) = self.read_tlv()?;
+        if tag != 0x30 { return None; }
+        // Replace our view with the inner content. Anchored by lifetime,
+        // we hop the cursor INTO the sequence by resetting bytes+pos.
+        self.bytes = content;
+        self.pos = 0;
+        Some(())
+    }
+
+    /// Enter a `[N] EXPLICIT` wrapper (context-specific constructed).
+    fn enter_context_explicit(&mut self, n: u8) -> Option<()> {
+        let expected = 0xA0 | (n & 0x1F);
+        let (tag, content) = self.read_tlv()?;
+        if tag != expected { return None; }
+        self.bytes = content;
+        self.pos = 0;
+        Some(())
+    }
+
+    fn read_enumerated(&mut self) -> Option<u32> {
+        let (tag, content) = self.read_tlv()?;
+        if tag != 0x0A { return None; }
+        let mut v = 0u32;
+        for b in content { v = (v << 8) | (*b as u32); }
+        Some(v)
+    }
+
+    fn read_octet_string(&mut self) -> Option<&'a [u8]> {
+        let (tag, content) = self.read_tlv()?;
+        if tag != 0x04 { return None; }
+        Some(content)
+    }
+
+    fn skip_one(&mut self) -> Option<()> {
+        let _ = self.read_tlv()?;
+        Some(())
+    }
+
+    fn skip_optional_context(&mut self, n: u8) {
+        let expected = 0xA0 | (n & 0x1F);
+        if self.bytes.get(self.pos) == Some(&expected) {
+            let _ = self.skip_one();
+        }
     }
 }
 
+#[allow(dead_code)]
 fn find_subseq(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
