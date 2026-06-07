@@ -46,6 +46,12 @@ pub struct HeaderInfo {
     /// doesn't block. Used during staged rollouts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_security_policy_report_only: Option<String>,
+    /// v0.5.36 — Referrer-Policy. Controls what the browser sends in
+    /// the Referer header on outbound requests (strict-origin, no-
+    /// referrer, same-origin, etc.). Defaults vary per browser;
+    /// explicit declaration is good posture.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub referrer_policy: Option<String>,
     /// v0.5.1 — HTTP response compression detection. Populated by
     /// observing `Content-Encoding` on a regular GET. Used to emit
     /// TLS-BREACH-ELIGIBLE — BREACH (CVE-2013-3587) requires the
@@ -226,6 +232,10 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
     }
     if let Some(v) = response.header("content-security-policy-report-only") {
         info.content_security_policy_report_only = Some(v.to_string());
+    }
+    // v0.5.36 — Referrer-Policy.
+    if let Some(v) = response.header("referrer-policy") {
+        info.referrer_policy = Some(v.to_string());
     }
 
     // v0.5.1 — BREACH eligibility. Observe Content-Encoding directly.
