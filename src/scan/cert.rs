@@ -102,6 +102,12 @@ pub struct CertificateInfo {
     /// when AIA is absent or contains no caIssuers entry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aia_ca_issuers_url: Option<String>,
+    /// v0.5.31 — true when the caIssuers URL above is reachable via
+    /// HTTP HEAD. Operationally important: when present-but-unreachable
+    /// breaks AIA-walking clients that don't already have the issuer
+    /// pinned. None when no caIssuers URL was published.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aia_ca_issuers_reachable: Option<bool>,
 }
 
 impl CertificateInfo {
@@ -181,6 +187,18 @@ impl CertificateInfo {
                 "TLS-CERT-CHAIN-MISORDERED",
                 host,
                 "Server presented the cert chain in a wire order that violates RFC 5246 §7.4.2 — at some point cert[i+1].subject ≠ cert[i].issuer. Strict clients (and some validators) fail on misordered chains; lenient ones fall back to AIA-fetching which costs an extra round-trip.",
+            ));
+        }
+        if let (Some(url), Some(false)) = (
+            self.aia_ca_issuers_url.as_deref(),
+            self.aia_ca_issuers_reachable,
+        ) {
+            findings.push(make(
+                "TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE",
+                host,
+                format!(
+                    "AIA caIssuers URL is published as {url} but unreachable — breaks AIA-walking for clients that don't already have the issuer pinned. Common pattern: stale CA URL after a server cutover, or an issuer cert that was moved without updating the published URL."
+                ),
             ));
         }
         let sig_lower = self.signature_algorithm.to_lowercase();
@@ -353,6 +371,13 @@ pub async fn inspect(
     let mut info = parse_leaf(leaf_der.as_ref(), chain.len() as u32, None)?;
     info.chain_order_correct = chain_order_is_correct(chain);
 
+    // v0.5.31 — AIA caIssuers reachability. Run a quick HTTP HEAD
+    // against the URL; populates Some(true/false) when a URL was
+    // published, None otherwise. Bounded by `deadline`.
+    if let Some(url) = info.aia_ca_issuers_url.as_deref() {
+        info.aia_ca_issuers_reachable = Some(check_url_reachable(url, deadline).await);
+    }
+
     // v0.5.16 — active OCSP query when the responder URL is published
     // and we have an issuer cert in the chain. The result populates
     // ocsp_status; the orchestrator's stapling probe runs afterwards
@@ -472,6 +497,7 @@ fn parse_leaf(
         // chain-order verdict once it has the full chain in scope.
         chain_order_correct: true,
         aia_ca_issuers_url,
+        aia_ca_issuers_reachable: None,
         ocsp_stapled,
         ocsp_status,
     })
@@ -592,6 +618,20 @@ fn extract_ocsp_responder_url(cert: &X509Certificate) -> Option<String> {
 fn extract_aia_ca_issuers_url(cert: &X509Certificate) -> Option<String> {
     let ca_issuers_oid: Oid = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 2]).unwrap();
     extract_aia_url(cert, &ca_issuers_oid)
+}
+
+/// Quick HEAD check whether `url` returns a 2xx / 3xx within the
+/// deadline. Used by the v0.5.31 AIA caIssuers reachability probe.
+/// We use spawn_blocking because ureq is sync.
+async fn check_url_reachable(url: &str, deadline: Duration) -> bool {
+    let url = url.to_string();
+    let timeout = deadline.min(Duration::from_secs(5));
+    tokio::task::spawn_blocking(move || {
+        let agent = ureq::AgentBuilder::new().timeout(timeout).build();
+        agent.head(&url).call().is_ok()
+    })
+    .await
+    .unwrap_or(false)
 }
 
 /// Walk the cert's AuthorityInformationAccess extension (RFC 5280

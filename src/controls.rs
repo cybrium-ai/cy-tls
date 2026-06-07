@@ -200,6 +200,11 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Chain order (v0.5.29) ───────────────────────────────────
         "TLS-CERT-CHAIN-MISORDERED" => vec!["NIST 800-53 SC-17", "RFC 5246 §7.4.2"],
 
+        // ── AIA caIssuers reachability (v0.5.31) ────────────────────
+        "TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE" => {
+            vec!["NIST 800-53 SC-17", "RFC 5280 §4.2.2.1"]
+        }
+
         _ => vec![],
     }
 }

@@ -178,6 +178,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Chain order (v0.5.29) ───────────────────────────────────────
     ("TLS-CERT-CHAIN-MISORDERED", Severity::Medium, "Server sent the cert chain in an order that violates RFC 5246 §7.4.2 — at some point cert[i+1].subject ≠ cert[i].issuer. Strict clients fail; lenient ones fall back to AIA-fetching at extra round-trip cost"),
+
+    // ── AIA caIssuers reachability (v0.5.31) ────────────────────────
+    ("TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE", Severity::Low, "Cert's AIA caIssuers URL is published but unreachable via HTTP HEAD — AIA-walking clients (those without the issuer cert pinned) can't fetch the missing intermediate, breaking chain validation"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -241,10 +244,11 @@ mod tests {
         // TLS-CERT-CN-ONLY. v0.5.27 added
         // HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED. v0.5.28 added
         // TLS-GREASE-INTOLERANT. v0.5.29 added
-        // TLS-CERT-CHAIN-MISORDERED.
+        // TLS-CERT-CHAIN-MISORDERED. v0.5.31 added
+        // TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE.
         assert_eq!(
             FINDING_CATALOG.len(),
-            68,
+            69,
             "FINDING_CATALOG size drifted from spec"
         );
     }
