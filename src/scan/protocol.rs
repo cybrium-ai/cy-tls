@@ -65,6 +65,12 @@ pub struct Tls13Result {
     pub zero_rtt_accepted: bool,
     pub ech_advertised: bool,
     pub hello_retry_required: bool,
+    /// v0.5.14 — HTTP/3 (h3 over QUIC) advertised in the DNS
+    /// HTTPS record's `alpn` SvcParam. Independent signal from
+    /// the TLS-layer h2 ALPN (protocols.alpn) — h3 doesn't ride
+    /// inside a TLS connection, so the only way to discover it
+    /// without speaking QUIC is via DNS.
+    pub http3_advertised: bool,
 }
 
 impl ProtocolSupport {

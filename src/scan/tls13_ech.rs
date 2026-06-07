@@ -27,42 +27,57 @@ use std::time::Duration;
 use hickory_resolver::Resolver;
 use tokio::time::timeout;
 
-/// Returns true when the target hostname has an HTTPS record (type 65)
-/// containing an `ech=` SvcParam (key 5). False on absent record,
-/// absent key, or DNS failure.
-pub async fn probe(host: &str, deadline: Duration) -> bool {
-    let result = timeout(deadline.min(Duration::from_secs(5)), async {
+/// Outcome of the HTTPS-record probe. Both flags can be set or unset
+/// independently — a domain can publish ECH without HTTP/3, or h3
+/// without ECH, or both, or neither.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct HttpsRecordObserved {
+    pub ech_advertised: bool,
+    pub http3_advertised: bool,
+}
+
+/// Returns the parsed HTTPS-record signal for the given hostname.
+/// Default (all false) on DNS failure / absent record.
+pub async fn probe_record(host: &str, deadline: Duration) -> HttpsRecordObserved {
+    timeout(deadline.min(Duration::from_secs(5)), async {
         let resolver = Resolver::builder_tokio().ok()?.build();
-        // hickory's high-level `lookup` API queries the requested
-        // record type. RecordType::HTTPS is the numeric type 65.
         let lookup = resolver
             .lookup(host, hickory_resolver::proto::rr::RecordType::HTTPS)
             .await
             .ok()?;
+        let mut out = HttpsRecordObserved::default();
         for record in lookup.iter() {
-            // The HTTPS record's RData is decoded by hickory into a
-            // SVCB struct with a `svc_params` ordered list. SvcParamKey
-            // 5 == `ech`. Presence of any non-empty value = advertised.
             if let hickory_resolver::proto::rr::RData::HTTPS(svcb) = record {
-                if let Some(_ech_value) = find_ech_param(svcb) {
-                    return Some(true);
-                }
+                walk_svc_params(svcb, &mut out);
             }
         }
-        Some(false)
+        Some(out)
     })
-    .await;
-    result.ok().flatten().unwrap_or(false)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default()
 }
 
-/// Walk a SVCB record's SvcParam list for the `ech` key (5).
-/// hickory exposes svc_params as an ordered map keyed by SvcParamKey.
-fn find_ech_param(
+/// Walk a SVCB record's SvcParam list and stamp the observed flags
+/// onto the accumulator. Both `ech` (key 5) and `alpn` (key 1, with
+/// "h3" listed) cause stamps.
+fn walk_svc_params(
     svcb: &hickory_resolver::proto::rr::rdata::svcb::SVCB,
-) -> Option<&hickory_resolver::proto::rr::rdata::svcb::SvcParamValue> {
-    use hickory_resolver::proto::rr::rdata::svcb::SvcParamKey;
-    svcb.svc_params()
-        .iter()
-        .find(|(k, _)| matches!(k, SvcParamKey::EchConfigList | SvcParamKey::Key(5)))
-        .map(|(_, v)| v)
+    out: &mut HttpsRecordObserved,
+) {
+    use hickory_resolver::proto::rr::rdata::svcb::{SvcParamKey, SvcParamValue};
+    for (key, value) in svcb.svc_params().iter() {
+        match (key, value) {
+            (SvcParamKey::EchConfigList | SvcParamKey::Key(5), _) => {
+                out.ech_advertised = true;
+            }
+            (SvcParamKey::Alpn, SvcParamValue::Alpn(alpn))
+                if alpn.0.iter().any(|p| p == "h3" || p.starts_with("h3-")) =>
+            {
+                out.http3_advertised = true;
+            }
+            _ => {}
+        }
+    }
 }

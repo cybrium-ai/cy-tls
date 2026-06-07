@@ -186,11 +186,12 @@ async fn scan_one(
     if protocols.tls13.supported {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         protocols.tls13.zero_rtt_accepted = tls13_0rtt::probe(target, host_str, timeout).await;
-        // v0.5.7 — ECH (Encrypted ClientHello) advertisement via DNS
-        // HTTPS record (type 65). Single DNS query, no TLS handshake.
-        // Server publishes an ECH config in DNS when it wants clients
-        // to use ECH for the next handshake.
-        protocols.tls13.ech_advertised = tls13_ech::probe(host_str, timeout).await;
+        // v0.5.7 + v0.5.14 — Single DNS HTTPS-record (type 65) query
+        // populates ECH advertisement (SvcParam key 5) AND HTTP/3
+        // advertisement (SvcParam key 1 / `alpn` listing "h3").
+        let https_record = tls13_ech::probe_record(host_str, timeout).await;
+        protocols.tls13.ech_advertised = https_record.ech_advertised;
+        protocols.tls13.http3_advertised = https_record.http3_advertised;
     }
 
     if let Some(c) = &certificate {
