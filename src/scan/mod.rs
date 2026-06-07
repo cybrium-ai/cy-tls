@@ -11,6 +11,7 @@ mod cipher_enum_tls13;
 mod cipher_pref;
 mod connect;
 mod dh_params;
+mod dns_soa;
 mod extensions;
 mod fallback_scsv;
 mod forward_secrecy;
@@ -95,6 +96,11 @@ pub struct ScanReport {
     /// HSTS-NOT-PRELOADED / HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED
     /// signals are based on fresh data or a stale snapshot.
     pub preload_list_refreshed_at: &'static str,
+    /// v0.5.39 — DNS SOA record for the target zone. Authoritative
+    /// nameserver + hostmaster email + serial + refresh/retry/expire/
+    /// minimum. None when zone has no SOA or DNS lookup failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dns_soa: Option<dns_soa::SoaRecord>,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -822,6 +828,11 @@ async fn scan_one(
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         caa::lookup(host_str, timeout).await
     };
+    // v0.5.39 — DNS SOA lookup. Single DNS query, operational metadata.
+    let dns_soa = {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        dns_soa::lookup(host_str, timeout).await
+    };
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
     Ok(ScanReport {
@@ -843,6 +854,7 @@ async fn scan_one(
         caa_records,
         tolerates_grease,
         preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
+        dns_soa,
     })
 }
 
@@ -899,6 +911,7 @@ fn stub_report(
         caa_records: Vec::new(),
         tolerates_grease: false,
         preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
+        dns_soa: None,
     }
 }
 
