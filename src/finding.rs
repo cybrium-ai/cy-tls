@@ -133,6 +133,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── HTTP/2 ALPN posture (v0.5.5) ────────────────────────────────
     ("TLS-H2C-UPGRADE-ACCEPTED", Severity::Medium, "Server inside the TLS tunnel accepted an HTTP/1.1 Upgrade: h2c request with 101 Switching Protocols — typically indicates a reverse-proxy / TLS-terminator misconfig that allows protocol smuggling between the front-end and an h2c-capable backend"),
+
+    // ── HTTP/2 Rapid Reset eligibility (v0.5.9) ─────────────────────
+    ("TLS-HTTP2-RAPID-RESET-ELIGIBLE", Severity::Low, "Server HTTP/2 SETTINGS lacks MAX_CONCURRENT_STREAMS or sets it ≥ 1024 — eligible surface for CVE-2023-44487 Rapid Reset CPU-exhaustion DoS. Passive eligibility check only (no flood traffic sent); confirmation requires rate-limit testing on RST_STREAM frames"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -182,10 +185,11 @@ mod tests {
         // TLS-SYMANTEC-DISTRUSTED-CA. v0.4.5 added TLS-LUCKY13-LIKELY.
         // v0.5.0 added TLS-GOLDENDOODLE-ACTIVE. v0.5.1 added
         // TLS-BREACH-ELIGIBLE. v0.5.2 added TLS-NO-EXTENDED-MASTER-SECRET.
-        // v0.5.5 added TLS-H2C-UPGRADE-ACCEPTED.
+        // v0.5.5 added TLS-H2C-UPGRADE-ACCEPTED. v0.5.9 added
+        // TLS-HTTP2-RAPID-RESET-ELIGIBLE.
         assert_eq!(
             FINDING_CATALOG.len(),
-            53,
+            54,
             "FINDING_CATALOG size drifted from spec"
         );
     }

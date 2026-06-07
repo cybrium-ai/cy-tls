@@ -122,6 +122,11 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             vec!["NIST 800-53 SC-8", "OWASP ASVS 14.4.1", "RFC 7540 §3.4"]
         }
 
+        // ── HTTP/2 Rapid Reset eligibility (v0.5.9) ─────────────────
+        "TLS-HTTP2-RAPID-RESET-ELIGIBLE" => {
+            vec!["NIST 800-53 SC-5", "CVE-2023-44487", "RFC 7540 §6.5.2"]
+        }
+
         _ => vec![],
     }
 }

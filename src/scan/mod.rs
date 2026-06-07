@@ -16,6 +16,7 @@ mod forward_secrecy;
 mod handshake_sim;
 mod headers;
 mod http2_posture;
+mod http2_rapid_reset;
 mod legacy_proto;
 mod ocsp;
 mod oid_names;
@@ -492,6 +493,30 @@ async fn scan_one(
                 "TLS-H2C-UPGRADE-ACCEPTED",
                 target,
                 "Server returned 101 Switching Protocols in response to an HTTP/1.1 Upgrade: h2c request sent inside the TLS tunnel — TLS-terminator / reverse-proxy misconfig. Likely allows protocol smuggling between the front-end and an h2c-capable backend.",
+            ));
+        }
+    }
+
+    // v0.5.9 — HTTP/2 Rapid Reset (CVE-2023-44487) eligibility.
+    // Passive: read the server's SETTINGS frame, look for
+    // MAX_CONCURRENT_STREAMS. Absent or >=1024 → eligible. Only
+    // meaningful when the server speaks h2; rustls handshake to
+    // h2-only ALPN inside the probe filters non-h2 endpoints.
+    if matches!(protocols.alpn.as_deref(), Some("h2")) {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        if let http2_rapid_reset::RapidResetVerdict::Eligible { observed_limit } =
+            http2_rapid_reset::probe(target, host_str, timeout).await
+        {
+            let evidence = match observed_limit {
+                None => "Server SETTINGS frame did not advertise MAX_CONCURRENT_STREAMS — RFC 7540 §6.5.2 makes the value effectively unlimited.".to_string(),
+                Some(n) => format!(
+                    "Server SETTINGS advertises SETTINGS_MAX_CONCURRENT_STREAMS = {n} (≥1024 threshold). High limit broadens the Rapid Reset (CVE-2023-44487) attack surface."
+                ),
+            };
+            findings.push(crate::finding::make(
+                "TLS-HTTP2-RAPID-RESET-ELIGIBLE",
+                target,
+                evidence,
             ));
         }
     }
