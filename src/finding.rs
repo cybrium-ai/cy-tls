@@ -160,6 +160,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Basic Constraints CA-bit (v0.5.22) ──────────────────────────
     ("TLS-CERT-LEAF-IS-CA", Severity::Critical, "Leaf certificate has BasicConstraints cA: TRUE — end-entity certs MUST NOT have this flag set per RFC 5280 §4.2.1.9; allowing it means the leaf could sign sub-certs that chain to the same root. Catastrophic misissuance pattern (Comodo 2008, ANSSI 2013)"),
+
+    // ── Authority Key Identifier (v0.5.23) ──────────────────────────
+    ("TLS-CERT-NO-AKI", Severity::Low, "Non-self-signed cert lacks the AuthorityKeyIdentifier extension (RFC 5280 §4.2.1.1) — chain validators must fall back to issuer-DN matching, which is ambiguous when the issuer rotates keys or runs parallel intermediates"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -218,10 +221,10 @@ mod tests {
         // TLS-CERT-DANGEROUS-WILDCARD. v0.5.19 added
         // TLS-CERT-MISSING-SERVER-AUTH-EKU. v0.5.21 added
         // TLS-CERT-WEAK-SERIAL-ENTROPY. v0.5.22 added
-        // TLS-CERT-LEAF-IS-CA.
+        // TLS-CERT-LEAF-IS-CA. v0.5.23 added TLS-CERT-NO-AKI.
         assert_eq!(
             FINDING_CATALOG.len(),
-            62,
+            63,
             "FINDING_CATALOG size drifted from spec"
         );
     }

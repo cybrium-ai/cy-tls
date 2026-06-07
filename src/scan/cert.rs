@@ -79,6 +79,11 @@ pub struct CertificateInfo {
     /// end-entity cert; TRUE is catastrophic (leaf could sign
     /// sub-certs).
     pub basic_constraints_ca: bool,
+    /// v0.5.23 — true when the cert carries an AuthorityKeyIdentifier
+    /// extension (RFC 5280 §4.2.1.1, OID 2.5.29.35). Mandatory on
+    /// non-self-signed certs so chain validators can disambiguate
+    /// among multiple roots with the same issuer DN.
+    pub has_authority_key_identifier: bool,
 }
 
 impl CertificateInfo {
@@ -158,6 +163,13 @@ impl CertificateInfo {
                 "TLS-CERT-MISSING-SERVER-AUTH-EKU",
                 host,
                 "Leaf cert Extended Key Usage does not include id-kp-serverAuth (1.3.6.1.5.5.7.3.1) — CA/B Forum BR §7.1.2.7 requires this for publicly-trusted TLS server certs; modern browsers reject leafs that lack it.",
+            ));
+        }
+        if !self.has_authority_key_identifier && !self.self_signed {
+            findings.push(make(
+                "TLS-CERT-NO-AKI",
+                host,
+                "Non-self-signed leaf cert is missing the AuthorityKeyIdentifier extension (RFC 5280 §4.2.1.1) — chain validators have to fall back to issuer-DN matching which is ambiguous when the issuer has rotated keys or operates multiple parallel intermediates.",
             ));
         }
         if self.basic_constraints_ca && !self.self_signed {
@@ -365,6 +377,7 @@ fn parse_leaf(
     let crl_distribution_points = extract_crl_distribution_points(&cert);
     let serial_entropy_bits = serial_entropy_bits(tbs.raw_serial());
     let basic_constraints_ca = basic_constraints_ca_bit(&cert);
+    let has_authority_key_identifier = has_aki_extension(&cert);
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -394,6 +407,7 @@ fn parse_leaf(
         crl_distribution_points,
         serial_entropy_bits,
         basic_constraints_ca,
+        has_authority_key_identifier,
         ocsp_stapled,
         ocsp_status,
     })
@@ -546,6 +560,23 @@ fn has_extended_key_usage_server_auth(cert: &X509Certificate) -> bool {
     // constraints + key usage. We treat absence as "OK" rather than
     // emit a false positive on legacy chains.
     true
+}
+
+/// True when the cert carries an AuthorityKeyIdentifier extension
+/// (RFC 5280 §4.2.1.1, OID 2.5.29.35). Mandatory on non-self-signed
+/// certs to disambiguate among parallel intermediates with the same
+/// issuer DN.
+fn has_aki_extension(cert: &X509Certificate) -> bool {
+    use x509_parser::extensions::ParsedExtension;
+    for ext in cert.extensions() {
+        if matches!(
+            ext.parsed_extension(),
+            ParsedExtension::AuthorityKeyIdentifier(_)
+        ) {
+            return true;
+        }
+    }
+    false
 }
 
 /// True when the cert's BasicConstraints extension (RFC 5280 §4.2.1.9,
