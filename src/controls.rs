@@ -81,6 +81,17 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "RFC 7507",
         ],
 
+        // ── Renegotiation + HPKP (v0.4.2) ───────────────────────────
+        "TLS-INSECURE-RENEG-LEGACY" => vec![
+            "NIST 800-53 SC-23",
+            "PCI DSS 4.2.1",
+            "RFC 5746",
+            "CVE-2009-3555",
+        ],
+        "TLS-HPKP-PRESENT" => vec![
+            // Deprecated — informational only, no compliance mapping.
+        ],
+
         _ => vec![],
     }
 }

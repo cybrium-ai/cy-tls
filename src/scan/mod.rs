@@ -314,6 +314,9 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
 
     // TLS 1.2 ServerHello extension parse — renegotiation_info,
     // heartbeat, compression. One extra handshake but cheap.
+    // Preserve the tri-state result so we don't false-positive when
+    // the probe couldn't complete a TLS 1.2 ServerHello.
+    let mut tls12_features_observed: Option<tls12_features::Tls12Features> = None;
     if !skip_cipher_enum {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         let f = tls12_features::probe(target, host_str, timeout).await;
@@ -326,8 +329,26 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         if let Some(h) = f.heartbeat_offered {
             extensions.heartbeat.offered = h;
         }
+        tls12_features_observed = Some(f);
     }
     extensions.contribute_findings(target, &mut findings);
+
+    // v0.4.2 — passive insecure renegotiation surface. Fire ONLY when
+    // we definitively observed a TLS 1.2 ServerHello AND that
+    // ServerHello did NOT carry the renegotiation_info extension
+    // (0xff01) per RFC 5746 §3.6. CVE-2009-3555 plaintext-injection
+    // surface. Tri-state preserved so we don't false-positive on
+    // probes that couldn't complete (e.g. TLS-1.3-only or rejecting
+    // cipher policy).
+    if let Some(feat) = &tls12_features_observed {
+        if protocols.tls12.supported && feat.secure_renegotiation == Some(false) {
+            findings.push(crate::finding::make(
+                "TLS-INSECURE-RENEG-LEGACY",
+                target,
+                "TLS 1.2 ServerHello did not advertise the renegotiation_info extension (0xff01) — legacy CVE-2009-3555 plaintext-injection surface. Any subsequent renegotiation can be hijacked to inject attacker plaintext.",
+            ));
+        }
+    }
 
     // Heartbleed active probe — only runs when the server advertised
     // the heartbeat extension (the vulnerability is gated on that).

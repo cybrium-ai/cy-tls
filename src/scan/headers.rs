@@ -60,6 +60,13 @@ impl HeaderInfo {
         if !self.expect_ct.present {
             findings.push(make("EXPECT-CT-MISSING", host, "Expect-CT absent"));
         }
+        if self.hpkp.present {
+            findings.push(make(
+                "TLS-HPKP-PRESENT",
+                host,
+                "Public-Key-Pins (or -Report-Only) header observed — HPKP is deprecated and ignored by browsers, but Qualys SSL Labs still surfaces it.",
+            ));
+        }
     }
 }
 

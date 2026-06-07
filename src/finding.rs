@@ -111,6 +111,10 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("TLS-CIPHER-CLIENT-PREFERENCE-ONLY", Severity::Low,    "Server follows client's cipher preference order — weak ciphers may negotiate when legacy clients prefer them"),
     ("TLS-FORWARD-SECRECY-WEAK",          Severity::Medium, "Forward Secrecy bucket below 'modern' — legacy non-FS key-exchange ciphers accepted"),
     ("TLS-NO-FALLBACK-SCSV",              Severity::Medium, "Server accepts TLS_FALLBACK_SCSV in a downgraded ClientHello — no protection against POODLE-style version-downgrade attacks"),
+
+    // ── Renegotiation + deprecated trust hardening (v0.4.2) ─────────
+    ("TLS-INSECURE-RENEG-LEGACY", Severity::High, "Server does not advertise renegotiation_info extension — legacy CVE-2009-3555 plaintext-injection surface"),
+    ("TLS-HPKP-PRESENT",          Severity::Info, "Public-Key-Pins header present (HPKP is deprecated and ignored by modern browsers — informational only)"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -155,7 +159,8 @@ mod tests {
         // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED; v0.3.0 added TLS-CCS-INJECTION;
         // v0.3.1 added TLS-TICKETBLEED; v0.3.2 added TLS-OPENSSL-PADDING-ORACLE;
         // v0.3.6 added TLS-CBC-ORACLE-FAMILY-FP. v0.4.1 added TLS-CIPHER-CLIENT-PREFERENCE-ONLY,
-        // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV.
-        assert_eq!(FINDING_CATALOG.len(), 45, "FINDING_CATALOG size drifted from spec");
+        // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV. v0.4.2 added
+        // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT.
+        assert_eq!(FINDING_CATALOG.len(), 47, "FINDING_CATALOG size drifted from spec");
     }
 }
