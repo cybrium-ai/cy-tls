@@ -95,6 +95,7 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("TLS-HEARTBLEED",        Severity::Critical, "Heartbleed (CVE-2014-0160) — server leaks memory via heartbeat over-read"),
     ("TLS-CCS-INJECTION",     Severity::Critical, "OpenSSL CCS Injection (CVE-2014-0224) — server accepts ChangeCipherSpec before handshake completion"),
     ("TLS-TICKETBLEED",       Severity::High,     "Ticketbleed (CVE-2016-9244) — F5 BIG-IP leaks process memory via session ID echo overflow"),
+    ("TLS-OPENSSL-PADDING-ORACLE", Severity::High, "OpenSSL AES-NI padding oracle (CVE-2016-2107) — alert leakage on invalid CBC padding"),
 
     // ── HSTS ────────────────────────────────────────────────────────
     ("HSTS-MISSING",         Severity::Medium, "Strict-Transport-Security header not sent"),
@@ -146,7 +147,7 @@ mod tests {
     #[test]
     fn catalog_count_matches_design_doc() {
         // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED; v0.3.0 added TLS-CCS-INJECTION;
-        // v0.3.1 added TLS-TICKETBLEED.
-        assert_eq!(FINDING_CATALOG.len(), 40, "FINDING_CATALOG size drifted from spec");
+        // v0.3.1 added TLS-TICKETBLEED; v0.3.2 added TLS-OPENSSL-PADDING-ORACLE.
+        assert_eq!(FINDING_CATALOG.len(), 41, "FINDING_CATALOG size drifted from spec");
     }
 }

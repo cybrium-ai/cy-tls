@@ -52,7 +52,7 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         "TLS-CLIENT-RENEG-ALLOWED" | "TLS-COMPRESSION-ENABLED"
         | "TLS-HEARTBEAT-ENABLED" | "TLS-ROBOT-VULNERABLE"
         | "TLS-DROWN-VULNERABLE" | "TLS-HEARTBLEED" | "TLS-CCS-INJECTION"
-        | "TLS-TICKETBLEED" => vec![
+        | "TLS-TICKETBLEED" | "TLS-OPENSSL-PADDING-ORACLE" => vec![
             "NIST 800-53 SC-13",
             "PCI DSS 4.2.1",
         ],

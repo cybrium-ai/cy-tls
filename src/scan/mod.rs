@@ -16,6 +16,7 @@ mod vuln_heartbleed;
 mod vuln_goldendoodle;
 mod vuln_ccs;
 mod vuln_ticketbleed;
+mod vuln_padding_oracle;
 mod dh_params;
 mod cert;
 mod cipher;
@@ -223,6 +224,11 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
             .filter(|s| vuln_goldendoodle::is_cbc_suite(*s))
             .collect();
         vuln_goldendoodle::contribute_findings(target, &cbc_accepted, &mut findings);
+
+        // OpenSSL AES-NI padding oracle (CVE-2016-2107) eligibility —
+        // shares the same TLS 1.2 + CBC surface as GOLDENDOODLE but
+        // tracks the OpenSSL-specific fix population separately.
+        vuln_padding_oracle::contribute_findings(target, &cbc_accepted, &mut findings);
 
         // BEAST eligibility — TLS 1.0 with any CBC cipher exposes the
         // record-layer chosen-plaintext attack (BEAST, CVE-2011-3389).
