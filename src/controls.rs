@@ -187,6 +187,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── CN-only cert (v0.5.25) ──────────────────────────────────
         "TLS-CERT-CN-ONLY" => vec!["NIST 800-53 SC-17", "RFC 6125 §6.4.4"],
 
+        // ── HSTS preload eligibility (v0.5.27) ──────────────────────
+        "HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED" => vec![
+            "NIST 800-53 SC-8",
+            "OWASP ASVS 9.1",
+            "hstspreload.org submission criteria",
+        ],
+
         _ => vec![],
     }
 }

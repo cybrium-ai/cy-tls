@@ -169,6 +169,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── CN-only cert (v0.5.25) ──────────────────────────────────────
     ("TLS-CERT-CN-ONLY", Severity::High, "Cert has no SubjectAltName entries — modern browsers (Chrome 58+, Firefox 48+) don't consult the legacy Subject CN for hostname matching per RFC 6125 §6.4.4. Cert is unusable for TLS validation"),
+
+    // ── HSTS preload eligibility (v0.5.27) ──────────────────────────
+    ("HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED", Severity::Info, "Host meets hstspreload.org submission requirements (max-age ≥ 1yr + includeSubDomains + preload directive) but is not on the Chromium preload list. Submitting locks in HSTS from the first browser visit instead of waiting for the trust-on-first-use header to arrive"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -229,10 +232,11 @@ mod tests {
         // TLS-CERT-WEAK-SERIAL-ENTROPY. v0.5.22 added
         // TLS-CERT-LEAF-IS-CA. v0.5.23 added TLS-CERT-NO-AKI.
         // v0.5.24 added TLS-CERT-NOT-YET-VALID. v0.5.25 added
-        // TLS-CERT-CN-ONLY.
+        // TLS-CERT-CN-ONLY. v0.5.27 added
+        // HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED.
         assert_eq!(
             FINDING_CATALOG.len(),
-            65,
+            66,
             "FINDING_CATALOG size drifted from spec"
         );
     }

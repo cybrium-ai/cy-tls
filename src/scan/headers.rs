@@ -83,6 +83,23 @@ impl HeaderInfo {
                 "Header declares preload but host not on Chromium preload list",
             ));
         }
+        // v0.5.27 — HSTS preload eligibility. Host meets the formal
+        // hstspreload.org submission requirements (max-age ≥ 1yr,
+        // includeSubDomains, preload directive, present) but is NOT
+        // yet on the Chromium preload list. Operator can submit at
+        // hstspreload.org to lock in HSTS even on first browser visit.
+        if self.hsts.present
+            && self.hsts.max_age >= 31_536_000
+            && self.hsts.include_subdomains
+            && self.hsts.preload
+            && !self.hsts.in_preload_list
+        {
+            findings.push(make(
+                "HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED",
+                host,
+                "Host meets the hstspreload.org submission requirements (max-age ≥ 1yr, includeSubDomains, preload directive present) but is NOT yet on the Chromium preload list. Submit at hstspreload.org to lock in HSTS protection from the very first browser visit.",
+            ));
+        }
         if !self.expect_ct.present {
             findings.push(make("EXPECT-CT-MISSING", host, "Expect-CT absent"));
         }
