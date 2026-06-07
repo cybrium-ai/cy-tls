@@ -374,6 +374,8 @@ dependencies = [
  "futures",
  "hex",
  "jsonrpc-core",
+ "num-bigint",
+ "num-traits",
  "pretty_assertions",
  "rustls",
  "rustls-pki-types",

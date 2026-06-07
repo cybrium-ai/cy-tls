@@ -64,6 +64,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 sha2         = "0.10"
 hex          = "0.4"
 
+# Big-integer modular exponentiation — needed for ROBOT active probe
+# (must craft RSA-encrypted ClientKeyExchange variants with deliberately
+# malformed PKCS#1 v1.5 padding; can't use the rsa crate's encrypt path
+# because it enforces correct padding)
+num-bigint   = "0.4"
+num-traits   = "0.2"
+
 [dev-dependencies]
 pretty_assertions = "1"
 

@@ -17,6 +17,7 @@ mod vuln_goldendoodle;
 mod vuln_ccs;
 mod vuln_ticketbleed;
 mod vuln_padding_oracle;
+mod vuln_robot;
 mod dh_params;
 mod cert;
 mod cipher;
@@ -180,11 +181,33 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
             }
         }
         if robot_eligible {
-            findings.push(crate::finding::make(
-                "TLS-ROBOT-VULNERABLE",
-                target,
-                "RSA key-exchange cipher accepted — potentially exposes Bleichenbacher RSA padding oracle. Full active probe in v0.3.x.",
-            ));
+            // ROBOT active Bleichenbacher oracle probe — sends 5 RSA-CKE
+            // variants with deliberately malformed PKCS#1 v1.5 padding,
+            // compares server response classes. v0.3.5 upgrade from the
+            // v0.2.15 eligibility-tier check.
+            let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+            let v = vuln_robot::probe(target, host_str, timeout).await;
+            match v {
+                vuln_robot::RobotVerdict::Vulnerable => {
+                    findings.push(crate::finding::make(
+                        "TLS-ROBOT-VULNERABLE",
+                        target,
+                        "Server distinguishes RSA padding errors across malformed ClientKeyExchange variants — Bleichenbacher oracle confirmed active.",
+                    ));
+                }
+                vuln_robot::RobotVerdict::Indeterminate => {
+                    // Probe couldn't run — fall back to the eligibility
+                    // signal so we still flag the surface.
+                    findings.push(crate::finding::make(
+                        "TLS-ROBOT-VULNERABLE",
+                        target,
+                        "RSA key-exchange cipher accepted; active oracle probe couldn't run (IO/connect issue). Treating eligibility as risk.",
+                    ));
+                }
+                _ => {
+                    // NotVulnerable or NotApplicable — no finding emitted.
+                }
+            }
         }
 
         // DHE detection — any TLS_DHE_RSA_* cipher enumerated triggers
