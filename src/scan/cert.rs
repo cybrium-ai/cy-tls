@@ -89,6 +89,12 @@ pub struct CertificateInfo {
     /// on all CA certs, SHOULD be present on end-entity. Informational
     /// posture signal.
     pub has_subject_key_identifier: bool,
+    /// v0.5.29 — true when the server presented its certificate chain
+    /// in the wire order RFC 5246 §7.4.2 requires (leaf first, then
+    /// each subsequent cert is the issuer of the previous). False
+    /// when a subject/issuer mismatch is observed somewhere in the
+    /// chain. Always true for chain_length ≤ 1.
+    pub chain_order_correct: bool,
 }
 
 impl CertificateInfo {
@@ -161,6 +167,13 @@ impl CertificateInfo {
                     "Server presented {} certificates in the chain — typical chains are 2-4. Often indicates cross-signed sprawl or a stale intermediate left in place after a CA migration; prune the chain to reduce handshake bandwidth.",
                     self.chain_length,
                 ),
+            ));
+        }
+        if !self.chain_order_correct {
+            findings.push(make(
+                "TLS-CERT-CHAIN-MISORDERED",
+                host,
+                "Server presented the cert chain in a wire order that violates RFC 5246 §7.4.2 — at some point cert[i+1].subject ≠ cert[i].issuer. Strict clients (and some validators) fail on misordered chains; lenient ones fall back to AIA-fetching which costs an extra round-trip.",
             ));
         }
         let sig_lower = self.signature_algorithm.to_lowercase();
@@ -331,6 +344,7 @@ pub async fn inspect(
     // Stapled OCSP from rustls 0.23 requires a custom certificate verifier
     // to intercept; deferred to v0.2.1 ("OCSP via rasn-ocsp" item in TODO).
     let mut info = parse_leaf(leaf_der.as_ref(), chain.len() as u32, None)?;
+    info.chain_order_correct = chain_order_is_correct(chain);
 
     // v0.5.16 — active OCSP query when the responder URL is published
     // and we have an issuer cert in the chain. The result populates
@@ -446,6 +460,9 @@ fn parse_leaf(
         basic_constraints_ca,
         has_authority_key_identifier,
         has_subject_key_identifier,
+        // Optimistic default; cert::inspect overwrites with the real
+        // chain-order verdict once it has the full chain in scope.
+        chain_order_correct: true,
         ocsp_stapled,
         ocsp_status,
     })
@@ -615,6 +632,32 @@ fn has_aki_extension(cert: &X509Certificate) -> bool {
         }
     }
     false
+}
+
+/// Validate the chain order per RFC 5246 §7.4.2: the leaf comes
+/// first, then each subsequent cert MUST be the issuer of the
+/// previous (i.e. cert[i+1].subject == cert[i].issuer when compared
+/// as DER bytes). Returns true when the chain has ≤1 entry or every
+/// adjacent pair satisfies the issuer-link.
+fn chain_order_is_correct(chain: &[rustls_pki_types::CertificateDer<'_>]) -> bool {
+    if chain.len() < 2 {
+        return true;
+    }
+    let mut parsed = Vec::with_capacity(chain.len());
+    for der in chain {
+        match X509Certificate::from_der(der.as_ref()) {
+            Ok((_, c)) => parsed.push(c),
+            Err(_) => return true, // best-effort: don't false-positive on parse errors
+        }
+    }
+    for pair in parsed.windows(2) {
+        let issuer_of_prev = pair[0].tbs_certificate.issuer.as_raw();
+        let subject_of_next = pair[1].tbs_certificate.subject.as_raw();
+        if issuer_of_prev != subject_of_next {
+            return false;
+        }
+    }
+    true
 }
 
 /// True when the cert carries a SubjectKeyIdentifier extension

@@ -175,6 +175,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── GREASE intolerance (v0.5.28) ────────────────────────────────
     ("TLS-GREASE-INTOLERANT", Severity::Low, "Server rejected a ClientHello containing RFC 8701 GREASE cipher_suite values OR picked a GREASE value back — brittle TLS stack that violates the 'ignore unknown values' rule. Will break when new cipher suites or extensions roll out"),
+
+    // ── Chain order (v0.5.29) ───────────────────────────────────────
+    ("TLS-CERT-CHAIN-MISORDERED", Severity::Medium, "Server sent the cert chain in an order that violates RFC 5246 §7.4.2 — at some point cert[i+1].subject ≠ cert[i].issuer. Strict clients fail; lenient ones fall back to AIA-fetching at extra round-trip cost"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -237,10 +240,11 @@ mod tests {
         // v0.5.24 added TLS-CERT-NOT-YET-VALID. v0.5.25 added
         // TLS-CERT-CN-ONLY. v0.5.27 added
         // HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED. v0.5.28 added
-        // TLS-GREASE-INTOLERANT.
+        // TLS-GREASE-INTOLERANT. v0.5.29 added
+        // TLS-CERT-CHAIN-MISORDERED.
         assert_eq!(
             FINDING_CATALOG.len(),
-            67,
+            68,
             "FINDING_CATALOG size drifted from spec"
         );
     }

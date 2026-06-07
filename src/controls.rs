@@ -197,6 +197,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── GREASE intolerance (v0.5.28) ────────────────────────────
         "TLS-GREASE-INTOLERANT" => vec!["RFC 8701", "Chromium TLS implementation policy"],
 
+        // ── Chain order (v0.5.29) ───────────────────────────────────
+        "TLS-CERT-CHAIN-MISORDERED" => vec!["NIST 800-53 SC-17", "RFC 5246 §7.4.2"],
+
         _ => vec![],
     }
 }
