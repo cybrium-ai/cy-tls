@@ -151,6 +151,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── SAN wildcard policy (v0.5.18) ───────────────────────────────
     ("TLS-CERT-DANGEROUS-WILDCARD", Severity::High, "Leaf cert SAN includes a dangerous wildcard: multi-label (e.g. *.*.example.com — violates RFC 6125 §6.4.3) OR attached to a public suffix (e.g. *.com — violates CA/B Forum BR §3.2.2.6 — would cover every subdomain on that TLD)"),
+
+    // ── Extended Key Usage validation (v0.5.19) ─────────────────────
+    ("TLS-CERT-MISSING-SERVER-AUTH-EKU", Severity::High, "Leaf cert Extended Key Usage extension does not include id-kp-serverAuth (1.3.6.1.5.5.7.3.1) — CA/B Forum BR §7.1.2.7 requires this for publicly-trusted TLS server certs; modern browsers reject leafs that lack it"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -206,10 +209,11 @@ mod tests {
         // TLS-HTTP2-NO-HEADER-LIST-LIMIT. v0.5.13 added
         // TLS-CERT-EXCESSIVE-LIFETIME. v0.5.17 added
         // TLS-CERT-CHAIN-DEEP. v0.5.18 added
-        // TLS-CERT-DANGEROUS-WILDCARD.
+        // TLS-CERT-DANGEROUS-WILDCARD. v0.5.19 added
+        // TLS-CERT-MISSING-SERVER-AUTH-EKU.
         assert_eq!(
             FINDING_CATALOG.len(),
-            59,
+            60,
             "FINDING_CATALOG size drifted from spec"
         );
     }

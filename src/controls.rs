@@ -157,6 +157,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "RFC 6125 §6.4.3",
         ],
 
+        // ── Extended Key Usage validation (v0.5.19) ─────────────────
+        "TLS-CERT-MISSING-SERVER-AUTH-EKU" => vec![
+            "NIST 800-53 SC-17",
+            "CA/B Forum BR §7.1.2.7",
+            "RFC 5280 §4.2.1.12",
+        ],
+
         _ => vec![],
     }
 }

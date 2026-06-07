@@ -50,6 +50,11 @@ pub struct CertificateInfo {
     pub sct_distinct_operators: u32,
     pub ocsp_stapled: bool,
     pub ocsp_status: Option<String>,
+    /// v0.5.19 — true when the cert's Extended Key Usage extension
+    /// (OID 2.5.29.37) includes id-kp-serverAuth (1.3.6.1.5.5.7.3.1).
+    /// Required by CA/B Forum BR §7.1.2.7 for publicly-trusted TLS
+    /// server certs — browsers reject leaf certs that lack it.
+    pub has_server_auth_eku: bool,
     /// v0.5.15 — OCSP responder URL parsed from the cert's
     /// Authority Information Access extension (RFC 5280 §4.2.2.1
     /// accessMethod id-ad-ocsp 1.3.6.1.5.5.7.48.1). Populated when
@@ -129,6 +134,13 @@ impl CertificateInfo {
                 "TLS-CERT-WEAK-KEY",
                 host,
                 format!("{} {} bits", self.key_algorithm, self.key_bits),
+            ));
+        }
+        if !self.has_server_auth_eku {
+            findings.push(make(
+                "TLS-CERT-MISSING-SERVER-AUTH-EKU",
+                host,
+                "Leaf cert Extended Key Usage does not include id-kp-serverAuth (1.3.6.1.5.5.7.3.1) — CA/B Forum BR §7.1.2.7 requires this for publicly-trusted TLS server certs; modern browsers reject leafs that lack it.",
             ));
         }
         if !self.ocsp_stapled {
@@ -315,6 +327,7 @@ fn parse_leaf(
     let sct_count = sct_log_ids.len() as u32;
     let sct_distinct_operators = distinct_ct_operators(&sct_log_ids) as u32;
     let ocsp_responder_url = extract_ocsp_responder_url(&cert);
+    let has_server_auth_eku = has_extended_key_usage_server_auth(&cert);
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -340,6 +353,7 @@ fn parse_leaf(
         sct_count,
         sct_distinct_operators,
         ocsp_responder_url,
+        has_server_auth_eku,
         ocsp_stapled,
         ocsp_status,
     })
@@ -474,6 +488,24 @@ fn extract_ocsp_responder_url(cert: &X509Certificate) -> Option<String> {
         }
     }
     None
+}
+
+/// True when the cert's Extended Key Usage extension (OID 2.5.29.37)
+/// includes id-kp-serverAuth (1.3.6.1.5.5.7.3.1). x509-parser parses
+/// EKU into a ParsedExtension::ExtendedKeyUsage variant with a
+/// `server_auth: bool` shortcut.
+fn has_extended_key_usage_server_auth(cert: &X509Certificate) -> bool {
+    use x509_parser::extensions::ParsedExtension;
+    for ext in cert.extensions() {
+        if let ParsedExtension::ExtendedKeyUsage(eku) = ext.parsed_extension() {
+            return eku.server_auth;
+        }
+    }
+    // Pre-EKU certs (RFC 3280 era) often omit the extension entirely —
+    // those legitimately work for TLS server auth via the cert's basic
+    // constraints + key usage. We treat absence as "OK" rather than
+    // emit a false positive on legacy chains.
+    true
 }
 
 fn has_must_staple_extension(cert: &X509Certificate) -> bool {
