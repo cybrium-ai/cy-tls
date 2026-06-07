@@ -20,6 +20,7 @@ mod http2_posture;
 mod http2_rapid_reset;
 mod legacy_proto;
 mod ocsp;
+mod ocsp_query;
 mod oid_names;
 mod pqc;
 mod protocol;
@@ -166,7 +167,12 @@ async fn scan_one(
         let o = ocsp::probe(target, host_str, timeout).await;
         if let Some(c) = certificate.as_mut() {
             c.ocsp_stapled = o.stapled;
-            c.ocsp_status = o.status;
+            // v0.5.16 — stapled response is more authoritative than
+            // the active OCSP query result populated inside cert::inspect.
+            // Only overwrite when stapling actually provided a status.
+            if o.stapled && o.status.is_some() {
+                c.ocsp_status = o.status;
+            }
         }
     }
 

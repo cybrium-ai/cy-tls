@@ -201,9 +201,56 @@ pub async fn inspect(
         .ok_or_else(|| anyhow::anyhow!("empty cert chain"))?;
     // Stapled OCSP from rustls 0.23 requires a custom certificate verifier
     // to intercept; deferred to v0.2.1 ("OCSP via rasn-ocsp" item in TODO).
-    let info = parse_leaf(leaf_der.as_ref(), chain.len() > 1, None)?;
+    let mut info = parse_leaf(leaf_der.as_ref(), chain.len() > 1, None)?;
+
+    // v0.5.16 — active OCSP query when the responder URL is published
+    // and we have an issuer cert in the chain. The result populates
+    // ocsp_status; the orchestrator's stapling probe runs afterwards
+    // and will OVERWRITE only when it sees an actual stapled response
+    // (stapling is more authoritative when present).
+    if let (Some(url), Some(issuer_der)) = (info.ocsp_responder_url.as_deref(), chain.get(1)) {
+        if let Some(status) =
+            active_ocsp_query(leaf_der.as_ref(), issuer_der.as_ref(), url, deadline).await
+        {
+            info.ocsp_status = Some(status);
+        }
+    }
+
     timings.cert = start.elapsed().as_millis() as u64;
     Ok(info)
+}
+
+/// Run an OCSP request against the cert's AIA responder URL. Returns
+/// the parsed status string ("good" / "revoked" / "unknown") or None
+/// when the query couldn't be built or the responder didn't return a
+/// parseable response.
+async fn active_ocsp_query(
+    leaf_der: &[u8],
+    issuer_der: &[u8],
+    responder_url: &str,
+    deadline: Duration,
+) -> Option<String> {
+    let (_, leaf) = X509Certificate::from_der(leaf_der).ok()?;
+    let (_, issuer) = X509Certificate::from_der(issuer_der).ok()?;
+    // Issuer DN as DER bytes — needed for SHA-1 hashing.
+    let issuer_name_der = issuer.tbs_certificate.subject.as_raw();
+    // Issuer subject public key BIT STRING content (NOT the SPKI).
+    let issuer_pubkey_bytes = issuer
+        .tbs_certificate
+        .subject_pki
+        .subject_public_key
+        .data
+        .as_ref();
+    // Leaf serial as big-endian bytes.
+    let leaf_serial_bytes = leaf.tbs_certificate.raw_serial();
+
+    let request_der = super::ocsp_query::build_ocsp_request(
+        issuer_name_der,
+        issuer_pubkey_bytes,
+        leaf_serial_bytes,
+    );
+    let response = super::ocsp_query::query_responder(responder_url, request_der, deadline).await?;
+    parse_ocsp_status(&response)
 }
 
 fn parse_leaf(
