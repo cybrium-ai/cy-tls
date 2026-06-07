@@ -19,6 +19,12 @@ use crate::cli::VerifyPreloadArgs;
 /// Embedded sorted preload list.
 const PRELOAD_TEXT: &str = include_str!("../assets/hsts_preload.txt");
 
+/// v0.5.35 — date the embedded preload list was last refreshed from
+/// upstream Chromium. Surfaced into ScanReport metadata so operators
+/// can decide whether to upgrade cy-tls or hold for staleness. Bump
+/// this whenever assets/hsts_preload.txt is regenerated.
+pub const PRELOAD_LIST_REFRESHED_AT: &str = "2026-05-25";
+
 #[derive(Debug, Serialize)]
 struct VerifyResult {
     host: String,

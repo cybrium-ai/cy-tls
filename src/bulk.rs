@@ -86,6 +86,7 @@ fn failed_report(target: String) -> ScanReport {
         fallback_scsv: None,
         caa_records: Vec::new(),
         tolerates_grease: false,
+        preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
     }
 }
 

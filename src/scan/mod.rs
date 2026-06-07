@@ -90,6 +90,11 @@ pub struct ScanReport {
     /// the ClientHello (modern, expected). False when the server
     /// breaks the handshake on GREASE or echoes a GREASE value back.
     pub tolerates_grease: bool,
+    /// v0.5.35 — date the embedded HSTS preload list was last
+    /// refreshed from Chromium. Lets operators decide whether the
+    /// HSTS-NOT-PRELOADED / HSTS-PRELOAD-ELIGIBLE-BUT-UNREGISTERED
+    /// signals are based on fresh data or a stale snapshot.
+    pub preload_list_refreshed_at: &'static str,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -837,6 +842,7 @@ async fn scan_one(
         fallback_scsv: fallback_scsv_status,
         caa_records,
         tolerates_grease,
+        preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
     })
 }
 
@@ -892,6 +898,7 @@ fn stub_report(
         fallback_scsv: None,
         caa_records: Vec::new(),
         tolerates_grease: false,
+        preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
     }
 }
 
