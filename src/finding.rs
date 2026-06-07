@@ -127,6 +127,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── HTTP-level compression eligibility (v0.5.1) ─────────────────
     ("TLS-BREACH-ELIGIBLE", Severity::Low, "Server returns compressed HTTP responses (Content-Encoding: gzip/br/deflate/zstd) — BREACH (CVE-2013-3587) attack surface eligibility. Whether the attack is exploitable depends on whether the application also reflects attacker-controlled input alongside a secret"),
+
+    // ── Triple Handshake / Extended Master Secret (v0.5.2) ──────────
+    ("TLS-NO-EXTENDED-MASTER-SECRET", Severity::Medium, "Server does not support the Extended Master Secret extension (RFC 7627, ext 0x0017) — Triple Handshake (CVE-2014-1295) cross-session key reuse is possible"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -175,10 +178,10 @@ mod tests {
         // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT. v0.4.3 added
         // TLS-SYMANTEC-DISTRUSTED-CA. v0.4.5 added TLS-LUCKY13-LIKELY.
         // v0.5.0 added TLS-GOLDENDOODLE-ACTIVE. v0.5.1 added
-        // TLS-BREACH-ELIGIBLE.
+        // TLS-BREACH-ELIGIBLE. v0.5.2 added TLS-NO-EXTENDED-MASTER-SECRET.
         assert_eq!(
             FINDING_CATALOG.len(),
-            51,
+            52,
             "FINDING_CATALOG size drifted from spec"
         );
     }

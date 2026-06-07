@@ -109,6 +109,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── HTTP-level compression / BREACH (v0.5.1) ────────────────
         "TLS-BREACH-ELIGIBLE" => vec!["NIST 800-53 SC-8", "OWASP ASVS 9.2.3", "CVE-2013-3587"],
 
+        // ── Triple Handshake / EMS (v0.5.2) ─────────────────────────
+        "TLS-NO-EXTENDED-MASTER-SECRET" => vec![
+            "NIST 800-53 SC-23",
+            "PCI DSS 4.2.1",
+            "RFC 7627",
+            "CVE-2014-1295",
+        ],
+
         _ => vec![],
     }
 }

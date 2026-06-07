@@ -20,6 +20,13 @@ pub struct Tls12Features {
     pub secure_renegotiation: Option<bool>,
     pub compression_offered: Option<bool>,
     pub heartbeat_offered: Option<bool>,
+    /// v0.5.2 — Extended Master Secret support (RFC 7627, ext 0x0017).
+    /// When absent on TLS 1.2, the server is exposed to Triple Handshake
+    /// (CVE-2014-1295) cross-session key reuse. Tri-state — Some(true)
+    /// when the ServerHello echoes the extension, Some(false) when the
+    /// ServerHello extensions block was parsed but didn't include it,
+    /// None when no usable ServerHello was observed (don't false-positive).
+    pub extended_master_secret: Option<bool>,
 }
 
 pub async fn probe(target: &str, sni: &str, deadline: Duration) -> Tls12Features {
@@ -79,6 +86,7 @@ fn parse_server_hello(body: &[u8]) -> Tls12Features {
     let ext_end = i + ext_total;
     feat.secure_renegotiation = Some(false);
     feat.heartbeat_offered = Some(false);
+    feat.extended_master_secret = Some(false);
     while i + 4 <= ext_end && i + 4 <= body.len() {
         let ext_type = ((body[i] as u16) << 8) | (body[i + 1] as u16);
         let ext_len = ((body[i + 2] as usize) << 8) | (body[i + 3] as usize);
@@ -89,6 +97,7 @@ fn parse_server_hello(body: &[u8]) -> Tls12Features {
         match ext_type {
             0xff01 => feat.secure_renegotiation = Some(true),
             0x000f => feat.heartbeat_offered = Some(true),
+            0x0017 => feat.extended_master_secret = Some(true),
             _ => {}
         }
         i += ext_len;
@@ -118,6 +127,11 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     let heartbeat_ext: [u8; 6] = [0x00, 0x0f, 0x00, 0x01, 0x01, 0x00];
     let _ = &heartbeat_ext;
 
+    // v0.5.2 — Extended Master Secret (RFC 7627). Wire format:
+    //   ext_type(2) = 0x0017
+    //   ext_data_length(2) = 0x0000  (no body)
+    let ems_ext: [u8; 4] = [0x00, 0x17, 0x00, 0x00];
+
     // signature_algorithms
     let mut sigalg_ext = Vec::new();
     sigalg_ext.extend_from_slice(&[0x00, 0x0d]);
@@ -140,6 +154,7 @@ fn build_client_hello(sni: &str) -> Vec<u8> {
     extensions.extend_from_slice(&sni_ext);
     extensions.extend_from_slice(&reneg_ext);
     extensions.extend_from_slice(&heartbeat_ext);
+    extensions.extend_from_slice(&ems_ext);
     extensions.extend_from_slice(&sigalg_ext);
     extensions.extend_from_slice(&groups_ext);
 

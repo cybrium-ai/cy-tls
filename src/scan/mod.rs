@@ -384,6 +384,19 @@ async fn scan_one(
                 "TLS 1.2 ServerHello did not advertise the renegotiation_info extension (0xff01) — legacy CVE-2009-3555 plaintext-injection surface. Any subsequent renegotiation can be hijacked to inject attacker plaintext.",
             ));
         }
+        // v0.5.2 — Triple Handshake (CVE-2014-1295). Same tristate
+        // guard as the renegotiation_info check: only fire when the
+        // ServerHello extensions block was actually parsed and the
+        // EMS extension (0x0017, RFC 7627) was NOT echoed back.
+        // TLS 1.3 binds everything through HKDF so the check is
+        // TLS-1.2-specific.
+        if protocols.tls12.supported && feat.extended_master_secret == Some(false) {
+            findings.push(crate::finding::make(
+                "TLS-NO-EXTENDED-MASTER-SECRET",
+                target,
+                "TLS 1.2 ServerHello did not echo the Extended Master Secret extension (0x0017) despite the client offering it — RFC 7627 unimplemented. Triple Handshake (CVE-2014-1295) cross-session key reuse is possible: an attacker who terminates one TLS session can reuse the master secret in a second handshake with a different peer.",
+            ));
+        }
     }
 
     // Heartbleed active probe — only runs when the server advertised
