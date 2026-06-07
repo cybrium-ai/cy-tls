@@ -34,6 +34,18 @@ pub struct HeaderInfo {
     /// of which origin-classes may include this resource.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cross_origin_resource_policy: Option<String>,
+    /// v0.5.34 — Content-Security-Policy (RFC-status, browser-honoured).
+    /// The single biggest HTTP-layer XSS / data-exfil mitigation;
+    /// directs the browser on which sources can be loaded (scripts,
+    /// styles, images, frames, etc.). Raw value preserved — directive
+    /// parsing is a separate concern.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_security_policy: Option<String>,
+    /// v0.5.34 — Content-Security-Policy-Report-Only. Same as
+    /// content_security_policy but the browser only reports violations,
+    /// doesn't block. Used during staged rollouts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_security_policy_report_only: Option<String>,
     /// v0.5.1 — HTTP response compression detection. Populated by
     /// observing `Content-Encoding` on a regular GET. Used to emit
     /// TLS-BREACH-ELIGIBLE — BREACH (CVE-2013-3587) requires the
@@ -207,6 +219,13 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
     }
     if let Some(v) = response.header("cross-origin-resource-policy") {
         info.cross_origin_resource_policy = Some(v.to_string());
+    }
+    // v0.5.34 — Content-Security-Policy + report-only variant.
+    if let Some(v) = response.header("content-security-policy") {
+        info.content_security_policy = Some(v.to_string());
+    }
+    if let Some(v) = response.header("content-security-policy-report-only") {
+        info.content_security_policy_report_only = Some(v.to_string());
     }
 
     // v0.5.1 — BREACH eligibility. Observe Content-Encoding directly.
