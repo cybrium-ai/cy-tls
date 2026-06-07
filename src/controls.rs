@@ -98,6 +98,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Lucky13 timing side-channel (v0.4.5) ────────────────────
         "TLS-LUCKY13-LIKELY" => vec!["NIST 800-53 SC-13", "PCI DSS 4.2.1", "CVE-2013-0169"],
 
+        // ── GOLDENDOODLE / Zombie POODLE active (v0.5.0) ────────────
+        "TLS-GOLDENDOODLE-ACTIVE" => vec![
+            "NIST 800-53 SC-13",
+            "PCI DSS 4.2.1",
+            "ISO 27001 A.8.24",
+            "Böck 2019 — Goldendoodle / Zombie POODLE disclosure",
+        ],
+
         _ => vec![],
     }
 }

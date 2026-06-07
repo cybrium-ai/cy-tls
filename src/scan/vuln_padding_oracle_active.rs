@@ -44,7 +44,7 @@ pub enum OracleVerdict {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum AlertClass {
+pub(super) enum AlertClass {
     BadRecordMac,
     DecryptError,
     Other(u8),
@@ -174,7 +174,7 @@ async fn drive_oracle(target: &str, sni: &str, corrupt_padding: bool) -> Option<
 
 // ── ClientHello + record builders (cipher 0x002f only) ──────────────
 
-fn generate_random_32() -> [u8; 32] {
+pub(super) fn generate_random_32() -> [u8; 32] {
     // Deterministic across runs is fine — we're not relying on
     // unpredictability for any security property here.
     let mut out = [0u8; 32];
@@ -184,7 +184,7 @@ fn generate_random_32() -> [u8; 32] {
     out
 }
 
-fn build_client_hello(sni: &str, client_random: &[u8; 32]) -> Vec<u8> {
+pub(super) fn build_client_hello(sni: &str, client_random: &[u8; 32]) -> Vec<u8> {
     let mut sni_ext = Vec::new();
     sni_ext.extend_from_slice(&[0x00, 0x00]);
     let mut sni_list = Vec::new();
@@ -244,7 +244,7 @@ fn build_client_hello(sni: &str, client_random: &[u8; 32]) -> Vec<u8> {
     rec
 }
 
-fn build_cke_record(rsa_ct: &[u8]) -> Vec<u8> {
+pub(super) fn build_cke_record(rsa_ct: &[u8]) -> Vec<u8> {
     let mut hs_body = Vec::new();
     hs_body.extend_from_slice(&(rsa_ct.len() as u16).to_be_bytes());
     hs_body.extend_from_slice(rsa_ct);
@@ -268,7 +268,7 @@ fn build_cke_record(rsa_ct: &[u8]) -> Vec<u8> {
 
 // ── RSA PKCS#1 v1.5 encrypt (valid padding) ─────────────────────────
 
-fn rsa_pkcs1_v15_encrypt(n: &BigUint, e: &BigUint, m: &[u8]) -> Option<Vec<u8>> {
+pub(super) fn rsa_pkcs1_v15_encrypt(n: &BigUint, e: &BigUint, m: &[u8]) -> Option<Vec<u8>> {
     let n_byte_len = (n.bits() as usize).div_ceil(8);
     if m.len() > n_byte_len.saturating_sub(11) {
         return None;
@@ -302,7 +302,7 @@ fn rsa_pkcs1_v15_encrypt(n: &BigUint, e: &BigUint, m: &[u8]) -> Option<Vec<u8>> 
 
 // ── Server handshake walkers ────────────────────────────────────────
 
-fn parse_server_hello_random(accumulated: &[u8]) -> Option<[u8; 32]> {
+pub(super) fn parse_server_hello_random(accumulated: &[u8]) -> Option<[u8; 32]> {
     let body = find_handshake_body(accumulated, 0x02)?;
     // ServerHello body: server_version(2) || random(32) || ...
     if body.len() < 34 {
@@ -332,7 +332,7 @@ fn find_handshake_body(buf: &[u8], typ: u8) -> Option<Vec<u8>> {
     None
 }
 
-fn has_handshake_type(body: &[u8], typ: u8) -> bool {
+pub(super) fn has_handshake_type(body: &[u8], typ: u8) -> bool {
     let mut i = 0;
     while i + 4 <= body.len() {
         let msg_len =
@@ -348,7 +348,7 @@ fn has_handshake_type(body: &[u8], typ: u8) -> bool {
     false
 }
 
-fn parse_rsa_pubkey_from_cert_message(body: &[u8]) -> Option<(BigUint, BigUint)> {
+pub(super) fn parse_rsa_pubkey_from_cert_message(body: &[u8]) -> Option<(BigUint, BigUint)> {
     if body.len() < 6 {
         return None;
     }

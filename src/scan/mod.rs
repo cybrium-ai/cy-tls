@@ -27,6 +27,7 @@ mod tls12_features;
 mod tls13;
 mod vuln_ccs;
 mod vuln_goldendoodle;
+mod vuln_goldendoodle_active;
 mod vuln_heartbleed;
 mod vuln_padding_oracle;
 mod vuln_padding_oracle_active;
@@ -500,6 +501,26 @@ async fn scan_one(
                         &mut findings,
                     );
                 }
+            }
+        }
+
+        // v0.5.0 — GOLDENDOODLE / Zombie POODLE active probe. Distinct
+        // distinguisher from CVE-2016-2107: tests (bad_mac, good_pad)
+        // vs (good_mac, bad_pad) — orthogonal corruption flags. Same
+        // gate as the AES-NI probe (cipher 0x002f accepted), runs in
+        // sequence to avoid hammering a single endpoint with parallel
+        // post-handshake corruption attempts.
+        if aes128_cbc_sha_accepted {
+            let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+            if matches!(
+                vuln_goldendoodle_active::probe(target, host_str, timeout).await,
+                vuln_goldendoodle_active::GoldendoodleVerdict::Vulnerable
+            ) {
+                findings.push(crate::finding::make(
+                    "TLS-GOLDENDOODLE-ACTIVE",
+                    target,
+                    "Active record-layer probe confirmed a GOLDENDOODLE / Zombie POODLE-family CBC oracle: server returned bad_record_mac for the invalid-MAC record but decrypt_error for the invalid-padding record. Vaudenay-style plaintext recovery is feasible. Pattern matches Hanno Böck's 2019 disclosures against Citrix NetScaler, F5 BIG-IP, and Sangfor SSL VPN appliances.",
+                ));
             }
         }
     }

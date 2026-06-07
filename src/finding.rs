@@ -121,6 +121,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Lucky13 timing-side-channel (v0.4.5) ────────────────────────
     ("TLS-LUCKY13-LIKELY", Severity::Medium, "Server fingerprint matches an OpenSSL release predating the constant-time CBC decrypt fix (1.0.1g, April 2014) and accepts TLS 1.2 + CBC ciphers — Lucky13 (CVE-2013-0169) timing-side-channel plaintext recovery is likely feasible"),
+
+    // ── GOLDENDOODLE / Zombie POODLE active probe (v0.5.0) ──────────
+    ("TLS-GOLDENDOODLE-ACTIVE", Severity::High, "Active record-layer probe confirmed a CBC oracle in the GOLDENDOODLE / Zombie POODLE family: server returned distinct alert types for invalid-MAC vs invalid-padding records over an established TLS 1.2 CBC session — Vaudenay-style plaintext recovery is feasible"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -168,9 +171,10 @@ mod tests {
         // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV. v0.4.2 added
         // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT. v0.4.3 added
         // TLS-SYMANTEC-DISTRUSTED-CA. v0.4.5 added TLS-LUCKY13-LIKELY.
+        // v0.5.0 added TLS-GOLDENDOODLE-ACTIVE.
         assert_eq!(
             FINDING_CATALOG.len(),
-            49,
+            50,
             "FINDING_CATALOG size drifted from spec"
         );
     }
