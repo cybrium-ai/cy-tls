@@ -20,6 +20,9 @@ mod vuln_padding_oracle;
 mod vuln_padding_oracle_active;
 mod vuln_robot;
 mod tls12_crypto;
+mod cipher_pref;
+mod forward_secrecy;
+mod fallback_scsv;
 mod server_fingerprint;
 mod dh_params;
 mod cert;
@@ -60,6 +63,15 @@ pub struct ScanReport {
     /// findings to higher-confidence findings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_fingerprint: Option<server_fingerprint::ServerFingerprint>,
+    /// v0.4.1 — cipher-suite preference verdict + Forward-Secrecy bucket
+    /// + TLS_FALLBACK_SCSV downgrade-protection verdict. Qualys SSL
+    /// Labs reports each of these in its grade.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cipher_preference:  Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forward_secrecy:    Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_scsv:      Option<&'static str>,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -461,6 +473,78 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         Vec::new()
     };
 
+    // ── v0.4.1 — cipher preference + FS bucket + SCSV ───────────────
+    // All three are cheap (combined ~3 handshakes) and ship the Qualys
+    // SSL Labs surface the orchestrator was missing. Gated behind the
+    // same `skip_cipher_enum` flag because they share cipher-enum
+    // infrastructure.
+    let mut cipher_preference: Option<&'static str> = None;
+    let mut forward_secrecy_bucket: Option<&'static str> = None;
+    let mut fallback_scsv_status:   Option<&'static str> = None;
+
+    if !skip_cipher_enum {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+
+        // Cipher preference.
+        match cipher_pref::probe(target, host_str, timeout).await {
+            cipher_pref::PreferenceVerdict::ServerPreferred => {
+                cipher_preference = Some("server-preferred");
+            }
+            cipher_pref::PreferenceVerdict::ClientPreferred => {
+                cipher_preference = Some("client-preferred");
+                findings.push(crate::finding::make(
+                    "TLS-CIPHER-CLIENT-PREFERENCE-ONLY",
+                    target,
+                    "Reversing the offered cipher_suites list changed the negotiated suite — server follows client preference order.",
+                ));
+            }
+            cipher_pref::PreferenceVerdict::Indeterminate => {
+                cipher_preference = Some("indeterminate");
+            }
+        }
+
+        // Forward Secrecy classification — re-run TLS 1.2 enumeration
+        // here so we have the authoritative accepted list (the earlier
+        // enumeration walked the modern superset).
+        let accepted_at_12 = cipher_enum::enumerate_at_version(
+            target, host_str, 0x03, 0x03,
+            cipher_enum::TLS12_SUITES, timeout,
+        ).await;
+        let bucket = forward_secrecy::classify(&accepted_at_12, protocols.tls13.supported);
+        forward_secrecy_bucket = Some(bucket.as_str());
+        if matches!(bucket, forward_secrecy::FsBucket::None | forward_secrecy::FsBucket::Some) {
+            findings.push(crate::finding::make(
+                "TLS-FORWARD-SECRECY-WEAK",
+                target,
+                format!(
+                    "Forward Secrecy bucket: {} — non-FS RSA key-exchange ciphers accepted alongside (or instead of) ECDHE/DHE.",
+                    bucket.as_str(),
+                ),
+            ));
+        }
+
+        // TLS_FALLBACK_SCSV — only meaningful when the server actually
+        // supports TLS 1.2 or higher.
+        if protocols.tls12.supported || protocols.tls13.supported {
+            match fallback_scsv::probe(target, host_str, timeout).await {
+                fallback_scsv::ScsvVerdict::Honored => {
+                    fallback_scsv_status = Some("honored");
+                }
+                fallback_scsv::ScsvVerdict::NotHonored => {
+                    fallback_scsv_status = Some("not-honored");
+                    findings.push(crate::finding::make(
+                        "TLS-NO-FALLBACK-SCSV",
+                        target,
+                        "Server completed a TLS 1.1 handshake that advertised TLS_FALLBACK_SCSV — RFC 7507 requires inappropriate_fallback (alert 86). Downgrade attacks are not prevented.",
+                    ));
+                }
+                fallback_scsv::ScsvVerdict::Indeterminate => {
+                    fallback_scsv_status = Some("indeterminate");
+                }
+            }
+        }
+    }
+
     let elapsed_ms = start.elapsed().as_millis() as u64;
     Ok(ScanReport {
         target: target.into(),
@@ -475,6 +559,9 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
         findings,
         handshake_simulation,
         server_fingerprint,
+        cipher_preference,
+        forward_secrecy: forward_secrecy_bucket,
+        fallback_scsv:   fallback_scsv_status,
     })
 }
 
@@ -520,6 +607,9 @@ fn stub_report(target: String, ip: Option<String>, elapsed_ms: u64, findings: Ve
         findings,
         handshake_simulation: Vec::new(),
         server_fingerprint: None,
+        cipher_preference: None,
+        forward_secrecy:   None,
+        fallback_scsv:     None,
     }
 }
 

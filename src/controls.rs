@@ -68,6 +68,19 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Reachability + deprecated headers ───────────────────────
         "TLS-UNREACHABLE" | "TLS-NO-TLS13" | "EXPECT-CT-MISSING" => vec![],
 
+        // ── Cipher policy + downgrade protection (v0.4.1) ───────────
+        "TLS-CIPHER-CLIENT-PREFERENCE-ONLY"
+        | "TLS-FORWARD-SECRECY-WEAK" => vec![
+            "NIST 800-53 SC-13",
+            "PCI DSS 4.2.1",
+            "ISO 27001 A.8.24",
+        ],
+        "TLS-NO-FALLBACK-SCSV" => vec![
+            "NIST 800-53 SC-8",
+            "NIST 800-53 SC-13",
+            "RFC 7507",
+        ],
+
         _ => vec![],
     }
 }

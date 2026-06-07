@@ -75,7 +75,7 @@ async fn try_one(
 /// Body starts with handshake header (type 1B + length 3B) then ServerHello:
 ///   server_version(2) random(32) session_id_len(1) session_id(0..32)
 ///   cipher_suite(2)
-fn parse_server_hello_cipher(body: &[u8]) -> Option<u16> {
+pub(super) fn parse_server_hello_cipher(body: &[u8]) -> Option<u16> {
     if body.first()? != &0x02 {
         return None; // not a ServerHello
     }
@@ -88,7 +88,7 @@ fn parse_server_hello_cipher(body: &[u8]) -> Option<u16> {
     Some(suite)
 }
 
-fn build_client_hello(sni: &str, major: u8, minor: u8, suites: &[u16]) -> Vec<u8> {
+pub(super) fn build_client_hello(sni: &str, major: u8, minor: u8, suites: &[u16]) -> Vec<u8> {
     let mut sni_ext = Vec::new();
     sni_ext.extend_from_slice(&[0x00, 0x00]);
     let mut sni_list = Vec::new();

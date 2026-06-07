@@ -106,6 +106,11 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Deprecated trust hardening (informational) ──────────────────
     ("EXPECT-CT-MISSING", Severity::Info, "Expect-CT header absent (deprecated)"),
+
+    // ── Cipher policy + downgrade protection (v0.4.1) ───────────────
+    ("TLS-CIPHER-CLIENT-PREFERENCE-ONLY", Severity::Low,    "Server follows client's cipher preference order — weak ciphers may negotiate when legacy clients prefer them"),
+    ("TLS-FORWARD-SECRECY-WEAK",          Severity::Medium, "Forward Secrecy bucket below 'modern' — legacy non-FS key-exchange ciphers accepted"),
+    ("TLS-NO-FALLBACK-SCSV",              Severity::Medium, "Server accepts TLS_FALLBACK_SCSV in a downgraded ClientHello — no protection against POODLE-style version-downgrade attacks"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -149,7 +154,8 @@ mod tests {
     fn catalog_count_matches_design_doc() {
         // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED; v0.3.0 added TLS-CCS-INJECTION;
         // v0.3.1 added TLS-TICKETBLEED; v0.3.2 added TLS-OPENSSL-PADDING-ORACLE;
-        // v0.3.6 added TLS-CBC-ORACLE-FAMILY-FP.
-        assert_eq!(FINDING_CATALOG.len(), 42, "FINDING_CATALOG size drifted from spec");
+        // v0.3.6 added TLS-CBC-ORACLE-FAMILY-FP. v0.4.1 added TLS-CIPHER-CLIENT-PREFERENCE-ONLY,
+        // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV.
+        assert_eq!(FINDING_CATALOG.len(), 45, "FINDING_CATALOG size drifted from spec");
     }
 }
