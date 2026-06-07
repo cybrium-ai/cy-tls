@@ -15,6 +15,7 @@ mod pqc;
 mod vuln_heartbleed;
 mod vuln_goldendoodle;
 mod vuln_ccs;
+mod vuln_ticketbleed;
 mod dh_params;
 mod cert;
 mod cipher;
@@ -293,6 +294,19 @@ async fn scan_one(target: &str, timeout: Duration, skip_cipher_enum: bool, do_ha
                 "TLS-CCS-INJECTION",
                 target,
                 "Server accepted ChangeCipherSpec before handshake completion",
+            ));
+        }
+    }
+
+    // Ticketbleed (CVE-2016-9244) — F5 BIG-IP session ID leak.
+    if protocols.tls12.supported {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let v = vuln_ticketbleed::probe(target, host_str, timeout).await;
+        if matches!(v, vuln_ticketbleed::TicketbleedVerdict::Vulnerable) {
+            findings.push(crate::finding::make(
+                "TLS-TICKETBLEED",
+                target,
+                "Server echoed partial session ID with leaked process memory",
             ));
         }
     }

@@ -94,6 +94,7 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("TLS-DROWN-VULNERABLE",  Severity::Critical, "Server shares cert with SSLv2 server (DROWN)"),
     ("TLS-HEARTBLEED",        Severity::Critical, "Heartbleed (CVE-2014-0160) — server leaks memory via heartbeat over-read"),
     ("TLS-CCS-INJECTION",     Severity::Critical, "OpenSSL CCS Injection (CVE-2014-0224) — server accepts ChangeCipherSpec before handshake completion"),
+    ("TLS-TICKETBLEED",       Severity::High,     "Ticketbleed (CVE-2016-9244) — F5 BIG-IP leaks process memory via session ID echo overflow"),
 
     // ── HSTS ────────────────────────────────────────────────────────
     ("HSTS-MISSING",         Severity::Medium, "Strict-Transport-Security header not sent"),
@@ -144,7 +145,8 @@ mod tests {
 
     #[test]
     fn catalog_count_matches_design_doc() {
-        // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED; v0.3.0 added TLS-CCS-INJECTION.
-        assert_eq!(FINDING_CATALOG.len(), 39, "FINDING_CATALOG size drifted from spec");
+        // 37 in v0.1.0; v0.2.13 added TLS-HEARTBLEED; v0.3.0 added TLS-CCS-INJECTION;
+        // v0.3.1 added TLS-TICKETBLEED.
+        assert_eq!(FINDING_CATALOG.len(), 40, "FINDING_CATALOG size drifted from spec");
     }
 }
