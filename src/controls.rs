@@ -106,6 +106,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "Böck 2019 — Goldendoodle / Zombie POODLE disclosure",
         ],
 
+        // ── HTTP-level compression / BREACH (v0.5.1) ────────────────
+        "TLS-BREACH-ELIGIBLE" => vec!["NIST 800-53 SC-8", "OWASP ASVS 9.2.3", "CVE-2013-3587"],
+
         _ => vec![],
     }
 }

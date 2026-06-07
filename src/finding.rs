@@ -124,6 +124,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── GOLDENDOODLE / Zombie POODLE active probe (v0.5.0) ──────────
     ("TLS-GOLDENDOODLE-ACTIVE", Severity::High, "Active record-layer probe confirmed a CBC oracle in the GOLDENDOODLE / Zombie POODLE family: server returned distinct alert types for invalid-MAC vs invalid-padding records over an established TLS 1.2 CBC session — Vaudenay-style plaintext recovery is feasible"),
+
+    // ── HTTP-level compression eligibility (v0.5.1) ─────────────────
+    ("TLS-BREACH-ELIGIBLE", Severity::Low, "Server returns compressed HTTP responses (Content-Encoding: gzip/br/deflate/zstd) — BREACH (CVE-2013-3587) attack surface eligibility. Whether the attack is exploitable depends on whether the application also reflects attacker-controlled input alongside a secret"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -171,10 +174,11 @@ mod tests {
         // TLS-FORWARD-SECRECY-WEAK, TLS-NO-FALLBACK-SCSV. v0.4.2 added
         // TLS-INSECURE-RENEG-LEGACY, TLS-HPKP-PRESENT. v0.4.3 added
         // TLS-SYMANTEC-DISTRUSTED-CA. v0.4.5 added TLS-LUCKY13-LIKELY.
-        // v0.5.0 added TLS-GOLDENDOODLE-ACTIVE.
+        // v0.5.0 added TLS-GOLDENDOODLE-ACTIVE. v0.5.1 added
+        // TLS-BREACH-ELIGIBLE.
         assert_eq!(
             FINDING_CATALOG.len(),
-            50,
+            51,
             "FINDING_CATALOG size drifted from spec"
         );
     }

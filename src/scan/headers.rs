@@ -13,6 +13,24 @@ pub struct HeaderInfo {
     pub hsts: Hsts,
     pub expect_ct: ExpectCt,
     pub hpkp: Hpkp,
+    /// v0.5.1 — HTTP response compression detection. Populated by
+    /// observing `Content-Encoding` on a regular GET. Used to emit
+    /// TLS-BREACH-ELIGIBLE — BREACH (CVE-2013-3587) requires the
+    /// server to compress responses AND the application to reflect
+    /// user-controlled input alongside a secret. cy-tls only sees the
+    /// transport surface; the reflection axis stays out-of-scope.
+    pub http_compression: HttpCompression,
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct HttpCompression {
+    /// True when the server returned a Content-Encoding header
+    /// indicating compression of the response body.
+    pub offered: bool,
+    /// Normalised algorithm — "gzip" / "br" / "deflate" / "zstd" /
+    /// "identity" / or whatever the server literally sent. Empty
+    /// when `offered` is false.
+    pub algorithm: String,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -75,6 +93,16 @@ impl HeaderInfo {
                 "Public-Key-Pins (or -Report-Only) header observed — HPKP is deprecated and ignored by browsers, but Qualys SSL Labs still surfaces it.",
             ));
         }
+        if self.http_compression.offered {
+            findings.push(make(
+                "TLS-BREACH-ELIGIBLE",
+                host,
+                format!(
+                    "Server returned Content-Encoding: {} — BREACH (CVE-2013-3587) attack surface present whenever the application also reflects attacker-controlled input alongside a secret (CSRF token, session ID, etc.) in compressed responses. Transport-layer signal only; reflection axis is application-specific.",
+                    self.http_compression.algorithm,
+                ),
+            ));
+        }
     }
 }
 
@@ -82,7 +110,13 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
     let (host, _) = target.rsplit_once(':').unwrap_or((target, "443"));
     let url = format!("https://{host}/");
     let agent = ureq::AgentBuilder::new().timeout(deadline).build();
-    let resp = agent.get(&url).call();
+    // v0.5.1 — explicitly request compression so the server has a
+    // reason to respond with Content-Encoding (BREACH eligibility
+    // detection). Without this header most servers default to identity.
+    let resp = agent
+        .get(&url)
+        .set("Accept-Encoding", "gzip, br, deflate, zstd")
+        .call();
 
     let mut info = HeaderInfo::default();
     let response = match resp {
@@ -118,6 +152,18 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         .is_some()
     {
         info.hpkp.present = true;
+    }
+
+    // v0.5.1 — BREACH eligibility. Observe Content-Encoding directly.
+    // ureq transparently decompresses gzip but still exposes the
+    // original header on the response object. "identity" or no header
+    // mean no compression — not eligible.
+    if let Some(enc) = response.header("content-encoding") {
+        let normalised = enc.trim().to_ascii_lowercase();
+        if !normalised.is_empty() && normalised != "identity" {
+            info.http_compression.offered = true;
+            info.http_compression.algorithm = normalised;
+        }
     }
 
     Ok(info)
