@@ -62,6 +62,13 @@ pub struct CertificateInfo {
     /// active OCSP query when the server didn't staple a response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ocsp_responder_url: Option<String>,
+    /// v0.5.20 — CRL Distribution Points URLs parsed from the cert's
+    /// CRLDistributionPoints extension (RFC 5280 §4.2.1.13, OID
+    /// 2.5.29.31). Sibling of the OCSP responder URL — many CAs ship
+    /// CRLs as fallback or, post-2024 (e.g. Let's Encrypt's OCSP
+    /// deprecation), as the primary revocation channel.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub crl_distribution_points: Vec<String>,
 }
 
 impl CertificateInfo {
@@ -328,6 +335,7 @@ fn parse_leaf(
     let sct_distinct_operators = distinct_ct_operators(&sct_log_ids) as u32;
     let ocsp_responder_url = extract_ocsp_responder_url(&cert);
     let has_server_auth_eku = has_extended_key_usage_server_auth(&cert);
+    let crl_distribution_points = extract_crl_distribution_points(&cert);
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -354,6 +362,7 @@ fn parse_leaf(
         sct_distinct_operators,
         ocsp_responder_url,
         has_server_auth_eku,
+        crl_distribution_points,
         ocsp_stapled,
         ocsp_status,
     })
@@ -506,6 +515,34 @@ fn has_extended_key_usage_server_auth(cert: &X509Certificate) -> bool {
     // constraints + key usage. We treat absence as "OK" rather than
     // emit a false positive on legacy chains.
     true
+}
+
+/// Extract CRL Distribution Points URIs from the cert's
+/// CRLDistributionPoints extension (RFC 5280 §4.2.1.13, OID
+/// 2.5.29.31). Walks the SEQUENCE OF DistributionPoint structure
+/// pulling URI-form GeneralNames out of the distributionPoint
+/// fullName field. Returns an empty Vec when CRLDP is absent or
+/// contains no URI-form names.
+fn extract_crl_distribution_points(cert: &X509Certificate) -> Vec<String> {
+    use x509_parser::extensions::{DistributionPointName, ParsedExtension};
+    use x509_parser::prelude::GeneralName;
+    let mut out = Vec::new();
+    for ext in cert.extensions() {
+        if let ParsedExtension::CRLDistributionPoints(crldp) = ext.parsed_extension() {
+            for point in crldp.points.iter() {
+                if let Some(DistributionPointName::FullName(names)) =
+                    point.distribution_point.as_ref()
+                {
+                    for name in names.iter() {
+                        if let GeneralName::URI(uri) = name {
+                            out.push(uri.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 fn has_must_staple_extension(cert: &X509Certificate) -> bool {
