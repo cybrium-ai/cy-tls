@@ -164,6 +164,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "RFC 5280 §4.2.1.12",
         ],
 
+        // ── Cert serial entropy (v0.5.21) ───────────────────────────
+        "TLS-CERT-WEAK-SERIAL-ENTROPY" => vec![
+            "NIST 800-53 SC-17",
+            "CA/B Forum BR §7.1",
+            "RFC 5280 §4.1.2.2",
+        ],
+
         _ => vec![],
     }
 }

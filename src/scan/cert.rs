@@ -69,6 +69,11 @@ pub struct CertificateInfo {
     /// deprecation), as the primary revocation channel.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub crl_distribution_points: Vec<String>,
+    /// v0.5.21 — entropy bits in the cert's serial number after
+    /// stripping the X.690 sign-pad. CA/B Forum BR §7.1 requires
+    /// publicly-trusted CA-issued certs to carry ≥64 bits of
+    /// CA-generated entropy in the serial.
+    pub serial_entropy_bits: u32,
 }
 
 impl CertificateInfo {
@@ -148,6 +153,16 @@ impl CertificateInfo {
                 "TLS-CERT-MISSING-SERVER-AUTH-EKU",
                 host,
                 "Leaf cert Extended Key Usage does not include id-kp-serverAuth (1.3.6.1.5.5.7.3.1) — CA/B Forum BR §7.1.2.7 requires this for publicly-trusted TLS server certs; modern browsers reject leafs that lack it.",
+            ));
+        }
+        if self.serial_entropy_bits < 64 {
+            findings.push(make(
+                "TLS-CERT-WEAK-SERIAL-ENTROPY",
+                host,
+                format!(
+                    "Cert serial has {} bits of entropy (after sign-pad strip) — CA/B Forum BR §7.1 requires ≥64 bits of CA-generated entropy. Short serials are a Symantec-era footgun (CA/B Forum prohibited sequential serials in 2016) and break browser chain-validation heuristics.",
+                    self.serial_entropy_bits,
+                ),
             ));
         }
         if !self.ocsp_stapled {
@@ -336,6 +351,7 @@ fn parse_leaf(
     let ocsp_responder_url = extract_ocsp_responder_url(&cert);
     let has_server_auth_eku = has_extended_key_usage_server_auth(&cert);
     let crl_distribution_points = extract_crl_distribution_points(&cert);
+    let serial_entropy_bits = serial_entropy_bits(tbs.raw_serial());
 
     let (ocsp_stapled, ocsp_status) = match stapled_ocsp {
         Some(bytes) if !bytes.is_empty() => (true, parse_ocsp_status(bytes)),
@@ -363,6 +379,7 @@ fn parse_leaf(
         ocsp_responder_url,
         has_server_auth_eku,
         crl_distribution_points,
+        serial_entropy_bits,
         ocsp_stapled,
         ocsp_status,
     })
@@ -515,6 +532,22 @@ fn has_extended_key_usage_server_auth(cert: &X509Certificate) -> bool {
     // constraints + key usage. We treat absence as "OK" rather than
     // emit a false positive on legacy chains.
     true
+}
+
+/// Calculate the entropy bits in a cert serial number. The raw_serial
+/// from x509-parser includes the X.690 INTEGER encoding's sign-pad
+/// (a leading 0x00 when the high bit of the next byte is set) which
+/// doesn't carry entropy. After stripping that, multiply by 8.
+fn serial_entropy_bits(raw: &[u8]) -> u32 {
+    // Strip leading 0x00 sign-pad if present AND the next byte has
+    // high bit set (only then is the 0x00 a pad, not actual entropy).
+    let stripped: &[u8] = if raw.first() == Some(&0x00) && raw.get(1).is_some_and(|b| b & 0x80 != 0)
+    {
+        &raw[1..]
+    } else {
+        raw
+    };
+    (stripped.len() as u32) * 8
 }
 
 /// Extract CRL Distribution Points URIs from the cert's
