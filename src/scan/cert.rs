@@ -101,6 +101,23 @@ impl CertificateInfo {
                 format!("{} days remaining", self.days_remaining),
             ));
         }
+        // v0.5.24 — future-dated not_before. Browsers reject certs
+        // that are not yet valid; this is usually CA-side clock skew
+        // or a staged-rollout misconfig where the cert was deployed
+        // before its validity window opened.
+        let now = Utc::now();
+        if self.not_before > now {
+            let hours_until_valid = (self.not_before - now).num_hours();
+            findings.push(make(
+                "TLS-CERT-NOT-YET-VALID",
+                host,
+                format!(
+                    "Cert not_before = {} is in the future ({} hours from now) — cert is not yet valid; browsers reject these as INVALID. Usually CA-side clock skew or staged-rollout misconfig.",
+                    self.not_before.to_rfc3339(),
+                    hours_until_valid,
+                ),
+            ));
+        }
         // v0.5.13 — CA/B Forum Baseline Requirements §6.3.2: server
         // cert validity capped at 397 days (398 days inclusive of
         // start day). Browsers (Apple Sep 2020, then Chrome / Mozilla)

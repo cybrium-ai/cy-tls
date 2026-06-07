@@ -163,6 +163,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Authority Key Identifier (v0.5.23) ──────────────────────────
     ("TLS-CERT-NO-AKI", Severity::Low, "Non-self-signed cert lacks the AuthorityKeyIdentifier extension (RFC 5280 §4.2.1.1) — chain validators must fall back to issuer-DN matching, which is ambiguous when the issuer rotates keys or runs parallel intermediates"),
+
+    // ── not_before future-dated (v0.5.24) ───────────────────────────
+    ("TLS-CERT-NOT-YET-VALID", Severity::High, "Cert not_before is in the future — cert is not yet valid; browsers reject as INVALID. Usually CA-side clock skew or a staged-rollout misconfig where the cert deployed before its validity window opened"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -222,9 +225,10 @@ mod tests {
         // TLS-CERT-MISSING-SERVER-AUTH-EKU. v0.5.21 added
         // TLS-CERT-WEAK-SERIAL-ENTROPY. v0.5.22 added
         // TLS-CERT-LEAF-IS-CA. v0.5.23 added TLS-CERT-NO-AKI.
+        // v0.5.24 added TLS-CERT-NOT-YET-VALID.
         assert_eq!(
             FINDING_CATALOG.len(),
-            63,
+            64,
             "FINDING_CATALOG size drifted from spec"
         );
     }

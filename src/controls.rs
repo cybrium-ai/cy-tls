@@ -181,6 +181,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Authority Key Identifier (v0.5.23) ──────────────────────
         "TLS-CERT-NO-AKI" => vec!["NIST 800-53 SC-17", "RFC 5280 §4.2.1.1"],
 
+        // ── Not yet valid (v0.5.24) ─────────────────────────────────
+        "TLS-CERT-NOT-YET-VALID" => vec!["NIST 800-53 SC-17", "RFC 5280 §4.1.2.5"],
+
         _ => vec![],
     }
 }
