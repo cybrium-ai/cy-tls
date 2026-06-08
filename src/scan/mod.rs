@@ -37,6 +37,7 @@ mod tls12_features;
 mod tls13;
 mod tls13_0rtt;
 mod tls13_ech;
+mod trust_stores;
 mod vuln_ccs;
 mod vuln_goldendoodle;
 mod vuln_goldendoodle_active;

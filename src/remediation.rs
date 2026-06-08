@@ -59,6 +59,9 @@ pub fn for_id(id: &str) -> &'static str {
         "HTTP-CSP-UNSAFE-EVAL" => "Audit your codebase for eval() / new Function() / setTimeout(string) / setInterval(string) and replace each. If a library forces it (older AngularJS, some templating engines), upgrade or replace the library — keeping `'unsafe-eval'` defeats most of the XSS-mitigation value of CSP.",
         "HTTP-CSP-DATA-IN-SCRIPT-SRC" => "Remove `data:` from the script-src directive. If you genuinely need data: URLs they should be in img-src/font-src only. data: in script-src is a classic CSP-bypass primitive.",
         "HTTP-CSP-WILDCARD-SCRIPT-SRC" => "Replace `*` with an explicit allowlist of trusted origins. Use Google's CSP Evaluator to pick a policy; for nonce-based modern apps, `'self' 'nonce-<random>'` is usually the goal.",
+        "TLS-CHAIN-NOT-TRUSTED-APPLE" => "Reissue from a CA whose root is in the Apple Trust Store (apple.com/support/HT209143). Public CAs in Mozilla CCADB are typically also in Apple's bundle; private/regional CAs often aren't.",
+        "TLS-CHAIN-NOT-TRUSTED-ANDROID" => "Reissue from a CA whose root is in AOSP's system trust store. Android also accepts user-added CAs (Settings → Security → Trust credentials) on most app configs since Android 7+.",
+        "TLS-CHAIN-NOT-TRUSTED-JAVA" => "Reissue from a CA whose root is in the OpenJDK cacerts bundle, OR import the missing root into each JVM's cacerts via `keytool -importcert`. Java apps using `HttpsURLConnection` / Apache HttpClient will reject otherwise.",
         "TLS-CERT-SHARED-INFRA-CERT" => "",
 
         // ── OCSP / SCT ──────────────────────────────────────────────

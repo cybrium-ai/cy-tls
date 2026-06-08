@@ -1,6 +1,6 @@
 [package]
 name        = "cy-tls"
-version     = "0.5.69"
+version     = "0.5.70"
 edition     = "2021"
 rust-version = "1.75"
 description = "Cybrium SSL/TLS posture scanner — full probe suite, JSONL streaming, HSTS preload lookup."
@@ -28,6 +28,10 @@ rustls       = { version = "0.23", features = ["ring", "logging"] }
 tokio-rustls = { version = "0.26", features = ["early-data"] }
 webpki-roots = "0.26"
 rustls-pki-types = "1.7"
+# v0.5.70 — PEM parsing for the bundled Apple / Android / Java / Mozilla
+# trust stores. Multi-store chain validation closes the parity gap vs
+# SSLyze / Qualys.
+rustls-pemfile = "2"
 
 # Cert parsing
 x509-parser  = "0.16"

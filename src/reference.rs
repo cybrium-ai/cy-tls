@@ -66,6 +66,13 @@ pub fn for_id(id: &str) -> &'static str {
         }
         "TLS-CERT-SHARED-INFRA-CERT" => "https://www.cloudflare.com/learning/ssl/what-is-ssl/",
         "TLS-CHAIN-NOT-TRUSTED-MOZILLA" => "https://wiki.mozilla.org/CA/Included_Certificates",
+        "TLS-CHAIN-NOT-TRUSTED-APPLE" => "https://support.apple.com/en-us/103272",
+        "TLS-CHAIN-NOT-TRUSTED-ANDROID" => {
+            "https://android.googlesource.com/platform/system/ca-certificates/+/master/files/"
+        }
+        "TLS-CHAIN-NOT-TRUSTED-JAVA" => {
+            "https://github.com/openjdk/jdk/tree/master/src/java.base/share/lib/security"
+        }
         "HTTP-CSP-MISSING"
         | "HTTP-CSP-UNSAFE-INLINE"
         | "HTTP-CSP-UNSAFE-EVAL"

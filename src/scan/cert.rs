@@ -127,6 +127,11 @@ pub struct CertificateInfo {
     pub mozilla_trusted: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trust_reason: Option<String>,
+    /// v0.5.70 — per-store chain validation against the four major
+    /// public trust stores (Mozilla / Apple / Android / Java). Closes
+    /// the parity gap vs SSLyze + Qualys SSL Labs. Each store is a
+    /// vendored bundle sourced from trust_stores_observatory.
+    pub trust_stores: super::trust_stores::TrustStoreOutcomes,
     pub self_signed: bool,
     pub ev: bool,
     pub must_staple: bool,
@@ -501,6 +506,44 @@ impl CertificateInfo {
                 ));
             }
         }
+        // v0.5.70 — per-store divergence findings. Fires only when
+        // that specific store rejected the chain — captures cases
+        // where (e.g.) Mozilla accepts but Apple rejects because of
+        // a per-platform CA distrust. Skipped when the leaf already
+        // failed cert-specific findings (expired/self-signed/etc).
+        let cert_breach_already = findings.iter().any(|f| {
+            matches!(
+                f.id,
+                "TLS-CERT-EXPIRED"
+                    | "TLS-CERT-SELF-SIGNED"
+                    | "TLS-CERT-HOSTNAME-MISMATCH"
+                    | "TLS-CERT-NOT-YET-VALID"
+                    | "TLS-CERT-INTERMEDIATE-EXPIRED"
+            )
+        });
+        if !cert_breach_already {
+            if !self.trust_stores.apple {
+                findings.push(make(
+                    "TLS-CHAIN-NOT-TRUSTED-APPLE",
+                    host,
+                    "Chain failed Apple platform trust-store validation (macOS/iOS/iPadOS/tvOS/watchOS/visionOS). Connections from Apple clients will be rejected",
+                ));
+            }
+            if !self.trust_stores.android {
+                findings.push(make(
+                    "TLS-CHAIN-NOT-TRUSTED-ANDROID",
+                    host,
+                    "Chain failed Android system trust-store validation. Connections from Android clients will be rejected",
+                ));
+            }
+            if !self.trust_stores.java {
+                findings.push(make(
+                    "TLS-CHAIN-NOT-TRUSTED-JAVA",
+                    host,
+                    "Chain failed OpenJDK / Java cacerts validation. Java HTTP clients (Spring, Apache HttpClient, etc) will reject the connection",
+                ));
+            }
+        }
         // v0.5.51 — intermediate cert expiry. A leaf with a long
         // not_after but an intermediate expiring tomorrow still breaks
         // browser chain validation tomorrow. Most CAs rotate
@@ -622,6 +665,11 @@ pub async fn inspect(
     info.chain_order_correct = chain_order_is_correct(chain);
     info.mozilla_trusted = mozilla_trusted;
     info.trust_reason = trust_reason;
+    // v0.5.70 — per-store validation against the four major public
+    // trust bundles. Runs even when strict-mode (Mozilla) failed so
+    // operators see which subset of stores would have accepted the
+    // chain.
+    info.trust_stores = super::trust_stores::validate_all(chain, &host_str);
 
     // v0.5.51 — walk the non-leaf chain entries and capture each
     // cert's days-to-expiry. Lets contribute_findings() emit
@@ -756,6 +804,9 @@ fn parse_leaf(
         // real strict-vs-tolerant outcome once the chain is in hand.
         mozilla_trusted: false,
         trust_reason: None,
+        // v0.5.70 — defaults; cert::inspect() overwrites with the
+        // per-store outcome after multi-store validation runs.
+        trust_stores: super::trust_stores::TrustStoreOutcomes::default(),
         self_signed,
         ev: has_ev_policy_oid(&cert),
         must_staple,

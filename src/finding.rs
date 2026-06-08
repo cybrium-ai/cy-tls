@@ -255,6 +255,11 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("HTTP-CSP-UNSAFE-EVAL",         Severity::Medium, "CSP policy contains 'unsafe-eval' — allows eval()/new Function()/setTimeout(string)/setInterval(string), re-introducing the dynamic-code-execution surface CSP exists to close"),
     ("HTTP-CSP-DATA-IN-SCRIPT-SRC",  Severity::High,   "CSP script-src (or default-src fallback) allows `data:` — attacker can construct a data: URL containing arbitrary script and the browser will execute it. Classic CSP-bypass primitive"),
     ("HTTP-CSP-WILDCARD-SCRIPT-SRC", Severity::High,   "CSP script-src (or default-src fallback) is `*` — every external origin can load scripts; CSP provides no XSS mitigation under this policy"),
+
+    // ── Multi-trust-store divergence (v0.5.70) ──────────────────────
+    ("TLS-CHAIN-NOT-TRUSTED-APPLE",   Severity::High, "Chain fails Apple platform trust-store validation (macOS / iOS / iPadOS / tvOS / watchOS / visionOS). Connections from Apple clients will be rejected"),
+    ("TLS-CHAIN-NOT-TRUSTED-ANDROID", Severity::High, "Chain fails Android system trust-store validation. Connections from Android clients will be rejected"),
+    ("TLS-CHAIN-NOT-TRUSTED-JAVA",    Severity::High, "Chain fails OpenJDK / Java cacerts validation. Java HTTP clients (Spring, Apache HttpClient, etc) will reject the connection"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -341,10 +346,11 @@ mod tests {
         // HTTP-CSP-UNSAFE-INLINE, HTTP-X-FRAME-OPTIONS-MISSING.
         // v0.5.65 added HTTP-NOSNIFF-MISSING. v0.5.66 added
         // HTTP-CSP-UNSAFE-EVAL + HTTP-CSP-DATA-IN-SCRIPT-SRC +
-        // HTTP-CSP-WILDCARD-SCRIPT-SRC.
+        // HTTP-CSP-WILDCARD-SCRIPT-SRC. v0.5.70 added per-store
+        // trust failures (APPLE/ANDROID/JAVA).
         assert_eq!(
             FINDING_CATALOG.len(),
-            97,
+            100,
             "FINDING_CATALOG size drifted from spec"
         );
     }

@@ -322,6 +322,15 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             vec!["OWASP ASVS 14.4.3", "NIST 800-53 SI-10", "CSP Level 3"]
         }
 
+        // ── Multi-trust-store divergence (v0.5.70) ──────────────────
+        "TLS-CHAIN-NOT-TRUSTED-APPLE"
+        | "TLS-CHAIN-NOT-TRUSTED-ANDROID"
+        | "TLS-CHAIN-NOT-TRUSTED-JAVA" => vec![
+            "NIST 800-53 SC-17",
+            "PCI DSS 4.0 §4.2.1.1",
+            "CA/B Forum BR §3.2",
+        ],
+
         _ => vec![],
     }
 }
