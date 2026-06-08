@@ -157,6 +157,7 @@ mod tests {
             evidence: "e".to_string(),
             controls: Vec::new(),
             remediation: "",
+            reference_url: "",
         }
     }
 

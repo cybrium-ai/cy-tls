@@ -42,6 +42,12 @@ pub struct Finding {
     /// to do. Surfaces as the "how to fix" line in dashboards.
     #[serde(skip_serializing_if = "str::is_empty")]
     pub remediation: &'static str,
+    /// v0.5.62 — canonical external reference URL (CVE / RFC / vendor
+    /// advisory / Mozilla wiki). Auto-attached from `reference.rs`.
+    /// Lets dashboards + SARIF deep-link the finding to the
+    /// authoritative source.
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub reference_url: &'static str,
 }
 
 /// Catalog of every stable finding ID cy-tls will ever emit. Adding a
@@ -261,6 +267,7 @@ pub fn make(id: &'static str, host: impl Into<String>, evidence: impl Into<Strin
         evidence: evidence.into(),
         controls: crate::controls::for_id(id),
         remediation: crate::remediation::for_id(id),
+        reference_url: crate::reference::for_id(id),
     }
 }
 
