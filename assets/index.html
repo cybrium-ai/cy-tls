@@ -1,223 +1,326 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>cy-tls — SSL/TLS posture scanner</title>
+<link rel="icon" type="image/svg+xml" href="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/logo_only.svg" />
 <style>
-  :root {
-    --bg:         #0b0f1a;
-    --panel:      #131826;
-    --panel-2:    #1c2233;
-    --border:     #1f2638;
-    --muted:      #6b7691;
-    --fg:         #d9def0;
-    --fg-bright:  #ffffff;
-    --primary:    #6d28d9;
-    --primary-2:  #8b5cf6;
-    --critical:   #ef4444;
-    --high:       #f97316;
-    --medium:     #eab308;
-    --low:        #38bdf8;
-    --info:       #94a3b8;
-    --green:      #22c55e;
-    --grade-aplus:#15803d;
-    --grade-a:    #22c55e;
-    --grade-b:    #84cc16;
-    --grade-c:    #eab308;
-    --grade-d:    #f97316;
-    --grade-e:    #ef4444;
-    --grade-f:    #b91c1c;
-    --grade-t:    #7c3aed;
+  /* cy-tls GUI — Cybrium-themed dark + light.
+     Palette mirrors cyproxy inspector-ui/styles.css so the cy* fleet
+     shares one design system. To change: update sentinel-ai
+     docs/design/cybrium-ui-kit.md, then propagate to every cy* repo. */
+
+  :root,
+  html[data-theme="dark"] {
+    --bg:           #0a0612;
+    --bg-card:      #11091f;
+    --bg-card-2:    #1a0f2e;
+    --bg-elev:      #221540;
+    --border:       #2a1c4a;
+    --border-soft:  #1d1238;
+
+    --text:         #ece6ff;
+    --text-muted:   #9d8fc4;
+    --text-dim:     #6c5d96;
+
+    --primary:      #bd90f3;
+    --primary-soft: #5411a6;
+    --primary-deep: #2d0958;
+
+    --ok:    #5ee9b5;
+    --warn:  #f4c97a;
+    --err:   #f57b8a;
+    --info:  #7eb4f4;
+
+    --shadow:      0 6px 24px rgba(0,0,0,.5);
+    --word-filter: none;
+
+    /* Severity (sev pills + count tiles) */
+    --sev-critical: #f57b8a;
+    --sev-high:     #f4a36b;
+    --sev-medium:   #f4c97a;
+    --sev-low:      #7eb4f4;
+    --sev-info:     #9d8fc4;
+
+    /* Grade colours — same hue ramp light + dark */
+    --grade-aplus:  #1f8f63;
+    --grade-a:      #5ee9b5;
+    --grade-b:      #c8d96b;
+    --grade-c:      #f4c97a;
+    --grade-d:      #f4a36b;
+    --grade-e:      #f57b8a;
+    --grade-f:      #b3324a;
+    --grade-t:      #bd90f3;
+    --grade-text:   #ffffff;
   }
+
+  html[data-theme="light"] {
+    --bg:           #faf8ff;
+    --bg-card:      #ffffff;
+    --bg-card-2:    #f4eefb;
+    --bg-elev:      #ede4fa;
+    --border:       #d6c7ec;
+    --border-soft:  #ece4f7;
+
+    --text:         #1c1130;
+    --text-muted:   #5b4781;
+    --text-dim:     #a193c0;
+
+    --primary:      #5411a6;
+    --primary-soft: #7a3edb;
+    --primary-deep: #2d0958;
+
+    --ok:    #1f8f63;
+    --warn:  #b4730d;
+    --err:   #b3324a;
+    --info:  #2a64b7;
+
+    --shadow:      0 4px 16px rgba(60,30,120,.08);
+    --word-filter: invert(1) brightness(0);
+
+    --sev-critical: #b3324a;
+    --sev-high:     #b4730d;
+    --sev-medium:   #957404;
+    --sev-low:      #2a64b7;
+    --sev-info:     #5b4781;
+
+    --grade-aplus:  #1f8f63;
+    --grade-a:      #22c55e;
+    --grade-b:      #84cc16;
+    --grade-c:      #eab308;
+    --grade-d:      #f97316;
+    --grade-e:      #ef4444;
+    --grade-f:      #b91c1c;
+    --grade-t:      #7c3aed;
+    --grade-text:   #ffffff;
+  }
+
   * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
-    background: var(--bg); color: var(--fg);
-    margin: 0; min-height: 100vh; line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.5;
   }
+
+  /* ── header ─────────────────────────────────────────────────────── */
   header {
-    display: flex; align-items: center; gap: 14px;
-    padding: 14px 28px; border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, rgba(109,40,217,0.08), transparent);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+    position: sticky; top: 0; z-index: 10;
   }
-  header img.shield   { height: 32px; width: 32px; }
-  header img.wordmark { height: 22px; width: auto; opacity: 0.95; }
-  header .sep         { color: var(--muted); margin: 0 4px; font-size: 18px; }
-  header .toolname    { font-weight: 600; color: var(--fg-bright); letter-spacing: 0.02em; }
-  header .toolversion { color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
-  header .grow        { flex: 1; }
-  header a            { color: var(--muted); text-decoration: none; font-size: 13px; }
-  header a:hover      { color: var(--fg-bright); }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .shield { height: 28px; width: 28px; }
+  .word   { height: 18px; filter: var(--word-filter); }
+  .divider { color: var(--text-dim); margin: 0 4px; }
+  .tool {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  header a {
+    color: var(--text-muted); text-decoration: none; font-size: 13px;
+    padding: 6px 12px; border-radius: 6px;
+  }
+  header a:hover { color: var(--text); background: var(--bg-elev); }
 
+  button, .btn-link {
+    background: var(--bg-elev); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    text-decoration: none; font-family: inherit;
+    transition: border-color .15s, background .15s;
+  }
+  button:hover, .btn-link:hover { border-color: var(--primary); }
+  button.primary {
+    background: var(--primary-soft); color: #fff; border-color: var(--primary-soft);
+    font-weight: 600;
+  }
+  button.primary:hover { background: var(--primary); border-color: var(--primary); }
+  button.primary:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  #theme-toggle .icon-sun  { display: none; }
+  html[data-theme="light"] #theme-toggle .icon-moon { display: none; }
+  html[data-theme="light"] #theme-toggle .icon-sun  { display: inline; }
+
+  /* ── main ───────────────────────────────────────────────────────── */
   main {
-    max-width: 1400px; margin: 0 auto; padding: 28px;
-    display: grid; grid-template-columns: 340px 1fr; gap: 24px;
+    flex: 1; padding: 24px; max-width: 1400px; width: 100%;
+    margin: 0 auto;
+    display: grid; grid-template-columns: 340px 1fr; gap: 20px;
   }
 
-  .panel {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 20px; margin-bottom: 18px;
+  .card, .panel {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px;
+    box-shadow: var(--shadow); margin-bottom: 16px;
   }
   .panel h2 {
-    margin: 0 0 14px; font-size: 14px;
-    text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+    margin: 0 0 14px; font-size: 13px;
+    text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted);
   }
   .panel h3 {
-    margin: 16px 0 8px; font-size: 13px; font-weight: 600; color: var(--fg-bright);
-    text-transform: uppercase; letter-spacing: 0.06em;
+    margin: 16px 0 8px; font-size: 12px; font-weight: 600; color: var(--text);
+    text-transform: uppercase; letter-spacing: .06em;
   }
-  label   { display: block; margin: 10px 0 6px; font-size: 13px; color: var(--muted); }
+
+  label   { display: block; margin: 10px 0 6px; font-size: 13px; color: var(--text-muted); }
   input, textarea, select {
-    width: 100%; background: var(--bg); color: var(--fg);
+    width: 100%; background: var(--bg); color: var(--text);
     border: 1px solid var(--border); border-radius: 6px;
     padding: 9px 11px; font-size: 14px; font-family: inherit;
   }
-  textarea { resize: vertical; min-height: 80px; font-family: ui-monospace, Menlo, monospace; }
-  input:focus, textarea:focus { outline: none; border-color: var(--primary-2); }
-  .check  { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--fg); }
+  textarea { resize: vertical; min-height: 80px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  input:focus, textarea:focus { outline: none; border-color: var(--primary); }
+  .check  { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--text); }
   .check input[type=checkbox] { width: auto; }
 
-  button.primary {
-    width: 100%; margin-top: 16px; padding: 11px 14px;
-    background: var(--primary); color: var(--fg-bright);
-    border: 0; border-radius: 6px; font-weight: 600; font-size: 14px;
-    cursor: pointer; transition: background 0.15s;
-  }
-  button.primary:hover { background: var(--primary-2); }
-  button.primary:disabled { background: var(--panel-2); color: var(--muted); cursor: not-allowed; }
-  button.ghost {
-    margin-top: 8px; padding: 7px 12px;
-    background: transparent; color: var(--muted);
-    border: 1px solid var(--border); border-radius: 5px;
-    font-size: 12px; cursor: pointer; width: 100%;
-  }
-  button.ghost:hover { color: var(--fg-bright); border-color: var(--primary-2); }
-  .exportbtn {
-    padding: 6px 12px; background: var(--panel-2); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 5px;
-    font-size: 11px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
-    transition: all 0.12s;
-  }
-  .exportbtn:hover { background: var(--primary); color: var(--fg-bright); border-color: var(--primary); }
-  .exportbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary.full { width: 100%; margin-top: 16px; padding: 11px 14px; font-size: 14px; }
+  button.ghost.full { width: 100%; margin-top: 8px; padding: 7px 12px; font-size: 12px; color: var(--text-muted); }
+  button.ghost.full:hover { color: var(--text); }
 
-  /* Summary card with grade + axis bars */
+  /* Summary card */
   .summary-grid {
     display: grid; grid-template-columns: 180px 1fr; gap: 28px; align-items: center;
     margin-bottom: 18px;
   }
   .grade-box {
-    width: 180px; height: 180px; border-radius: 12px;
+    width: 180px; height: 180px; border-radius: 14px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 80px; font-weight: 700; color: var(--fg-bright);
-    text-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    font-size: 80px; font-weight: 700; color: var(--grade-text);
+    text-shadow: 0 2px 6px rgba(0,0,0,.35);
   }
-  .grade-Aplus { background: var(--grade-aplus); }
-  .grade-A     { background: var(--grade-a); }
-  .grade-Aminus{ background: var(--grade-a); }
-  .grade-B     { background: var(--grade-b); }
-  .grade-C     { background: var(--grade-c); }
-  .grade-D     { background: var(--grade-d); }
-  .grade-E     { background: var(--grade-e); }
-  .grade-F     { background: var(--grade-f); }
-  .grade-T     { background: var(--grade-t); }
-  .grade-X     { background: var(--panel-2); color: var(--muted); font-size: 22px; }
+  .grade-Aplus  { background: var(--grade-aplus); }
+  .grade-A      { background: var(--grade-a); }
+  .grade-Aminus { background: var(--grade-a); }
+  .grade-B      { background: var(--grade-b); }
+  .grade-C      { background: var(--grade-c); }
+  .grade-D      { background: var(--grade-d); }
+  .grade-E      { background: var(--grade-e); }
+  .grade-F      { background: var(--grade-f); }
+  .grade-T      { background: var(--grade-t); }
+  .grade-X      { background: var(--bg-elev); color: var(--text-muted); font-size: 22px; }
 
   .axis-rows { display: grid; gap: 10px; }
-  .axis-row { display: grid; grid-template-columns: 140px 1fr 40px; gap: 12px; align-items: center; font-size: 13px; }
-  .axis-row .label { color: var(--muted); }
-  .axis-row .bar-track { height: 16px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
-  .axis-row .bar-fill  { height: 100%; background: var(--green); transition: width 0.3s; }
-  .axis-row .bar-fill.w50 { background: var(--medium); }
-  .axis-row .bar-fill.w30 { background: var(--high); }
-  .axis-row .bar-fill.w10 { background: var(--critical); }
-  .axis-row .val { text-align: right; color: var(--fg-bright); font-family: ui-monospace, monospace; font-size: 12px; }
+  .axis-row {
+    display: grid; grid-template-columns: 140px 1fr 40px; gap: 12px;
+    align-items: center; font-size: 13px;
+  }
+  .axis-row .label { color: var(--text-muted); }
+  .axis-row .bar-track { height: 14px; background: var(--bg-elev); border-radius: 3px; overflow: hidden; }
+  .axis-row .bar-fill  { height: 100%; background: var(--ok); transition: width .3s; }
+  .axis-row .bar-fill.w50 { background: var(--warn); }
+  .axis-row .bar-fill.w30 { background: var(--sev-high); }
+  .axis-row .bar-fill.w10 { background: var(--err); }
+  .axis-row .val { text-align: right; color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; }
 
   .verdict {
     margin-top: 14px; padding: 10px 14px;
-    background: var(--panel-2); border-left: 3px solid var(--primary-2);
-    border-radius: 4px; font-size: 13px; color: var(--fg-bright);
+    background: var(--bg-card-2); border-left: 3px solid var(--primary);
+    border-radius: 4px; font-size: 13px; color: var(--text);
   }
-  .verdict.warn  { border-color: var(--medium); }
-  .verdict.bad   { border-color: var(--critical); }
+  .verdict.warn { border-color: var(--warn); }
+  .verdict.bad  { border-color: var(--err); }
 
-  .kvgrid {
-    display: grid; grid-template-columns: 200px 1fr; gap: 6px 14px;
-    font-size: 13px;
+  .kvgrid { display: grid; grid-template-columns: 200px 1fr; gap: 6px 14px; font-size: 13px; }
+  .kvgrid .k { color: var(--text-muted); padding: 6px 0; border-bottom: 1px solid var(--border-soft); }
+  .kvgrid .v {
+    color: var(--text); padding: 6px 0; border-bottom: 1px solid var(--border-soft);
+    font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all;
   }
-  .kvgrid .k { color: var(--muted); padding: 6px 0; border-bottom: 1px solid var(--border); }
-  .kvgrid .v { color: var(--fg); padding: 6px 0; border-bottom: 1px solid var(--border); font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
-  .kvgrid .v.good { color: var(--green); }
-  .kvgrid .v.bad  { color: var(--critical); }
-  .kvgrid .v.warn { color: var(--medium); }
+  .kvgrid .v.good { color: var(--ok); }
+  .kvgrid .v.bad  { color: var(--err); }
+  .kvgrid .v.warn { color: var(--warn); }
 
   .pill {
     display: inline-block; padding: 2px 8px; border-radius: 4px;
-    font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   }
-  .pill.yes { background: rgba(34,197,94,0.18); color: var(--green); }
-  .pill.no  { background: rgba(239,68,68,0.18); color: var(--critical); }
-  .pill.na  { background: var(--panel-2); color: var(--muted); }
+  .pill.yes { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .pill.no  { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+  .pill.na  { background: var(--bg-elev); color: var(--text-muted); }
 
   .trust-tabs { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
   .trust-tab {
-    padding: 8px 14px; background: var(--panel-2); border: 1px solid var(--border);
+    padding: 8px 14px; background: var(--bg-elev); border: 1px solid var(--border);
     border-radius: 5px; font-size: 13px; display: flex; align-items: center; gap: 8px;
   }
-  .trust-tab.ok  { border-color: var(--green); color: var(--green); }
-  .trust-tab.bad { border-color: var(--critical); color: var(--critical); }
+  .trust-tab.ok  { border-color: var(--ok); color: var(--ok); }
+  .trust-tab.bad { border-color: var(--err); color: var(--err); }
 
   .cipher-list { display: grid; gap: 4px; font-family: ui-monospace, monospace; font-size: 12px; }
   .cipher-row {
     display: grid; grid-template-columns: 1fr 60px 40px; gap: 12px; align-items: center;
-    padding: 5px 10px; background: var(--panel-2); border-radius: 4px;
+    padding: 5px 10px; background: var(--bg-card-2); border-radius: 4px;
   }
-  .cipher-row .name { color: var(--fg-bright); }
-  .cipher-row .fs   { color: var(--green); font-size: 10px; }
-  .cipher-row .bits { text-align: right; color: var(--muted); }
+  .cipher-row .name { color: var(--text); }
+  .cipher-row .fs   { color: var(--ok); font-size: 10px; }
+  .cipher-row .bits { text-align: right; color: var(--text-muted); }
 
   .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
-  .tile  { text-align: center; padding: 12px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; }
-  .tile .n { font-size: 22px; font-weight: 700; color: var(--fg-bright); display: block; }
-  .tile .l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 2px; }
-  .tile.critical .n { color: var(--critical); }
-  .tile.high     .n { color: var(--high); }
-  .tile.medium   .n { color: var(--medium); }
-  .tile.low      .n { color: var(--low); }
-  .tile.info     .n { color: var(--info); }
+  .tile  { text-align: center; padding: 12px 8px; background: var(--bg-card-2); border: 1px solid var(--border); border-radius: 8px; }
+  .tile .n { font-size: 22px; font-weight: 700; color: var(--text); display: block; }
+  .tile .l { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-top: 2px; }
+  .tile.critical .n { color: var(--sev-critical); }
+  .tile.high     .n { color: var(--sev-high); }
+  .tile.medium   .n { color: var(--sev-medium); }
+  .tile.low      .n { color: var(--sev-low); }
+  .tile.info     .n { color: var(--sev-info); }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-  tr:hover td { background: var(--panel-2); }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+  th { color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:hover td { background: var(--bg-card-2); }
   .sev { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-  .sev.critical { background: rgba(239,68,68,0.18); color: var(--critical); }
-  .sev.high     { background: rgba(249,115,22,0.18); color: var(--high); }
-  .sev.medium   { background: rgba(234,179,8,0.18);  color: var(--medium); }
-  .sev.low      { background: rgba(56,189,248,0.18); color: var(--low); }
-  .sev.info     { background: rgba(148,163,184,0.18); color: var(--info); }
+  .sev.critical { background: color-mix(in srgb, var(--sev-critical) 18%, transparent); color: var(--sev-critical); }
+  .sev.high     { background: color-mix(in srgb, var(--sev-high) 18%, transparent); color: var(--sev-high); }
+  .sev.medium   { background: color-mix(in srgb, var(--sev-medium) 18%, transparent); color: var(--sev-medium); }
+  .sev.low      { background: color-mix(in srgb, var(--sev-low) 18%, transparent); color: var(--sev-low); }
+  .sev.info     { background: color-mix(in srgb, var(--sev-info) 18%, transparent); color: var(--sev-info); }
 
-  .target-pill { display: inline-block; padding: 2px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--fg-bright); }
-  .fix { color: var(--muted); font-size: 12px; margin-top: 4px; font-style: italic; }
+  .target-pill {
+    display: inline-block; padding: 2px 8px; background: var(--bg-elev);
+    border: 1px solid var(--border); border-radius: 4px;
+    font-family: ui-monospace, monospace; font-size: 12px; color: var(--text);
+  }
+  .fix { color: var(--text-muted); font-size: 12px; margin-top: 4px; font-style: italic; }
 
   .empty {
-    padding: 64px 20px; text-align: center; color: var(--muted); font-size: 14px;
+    padding: 64px 20px; text-align: center; color: var(--text-muted); font-size: 14px;
   }
-  .report-host {
-    font-size: 18px; font-weight: 600; color: var(--fg-bright); margin-bottom: 4px;
-  }
-  .report-meta { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .report-host { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .report-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
 
   .exports-bar {
     display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
-    padding: 10px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow);
   }
-  .exports-bar .lbl { color: var(--muted); font-size: 11px; align-self: center; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .exports-bar .lbl {
+    color: var(--text-muted); font-size: 11px; align-self: center;
+    margin-right: 4px; text-transform: uppercase; letter-spacing: .06em;
+  }
+  .exports-bar button { padding: 5px 10px; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
 
-  .footer { padding: 18px 28px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); text-align: center; }
-  .footer code { color: var(--fg); }
+  .footer {
+    padding: 18px 28px; color: var(--text-muted); font-size: 11px;
+    border-top: 1px solid var(--border); text-align: center;
+  }
+  .footer code { color: var(--text); }
 
   @media (max-width: 900px) {
     main { grid-template-columns: 1fr; }
@@ -227,17 +330,23 @@
 </head>
 <body>
 <header>
-  <img class="shield"   src="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/logo_only.svg"   alt="Cybrium"/>
-  <img class="wordmark" src="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/cybrium_word.svg" alt="Cybrium"/>
-  <span class="sep">/</span>
-  <span class="toolname">cy-tls</span>
-  <span class="toolversion" id="version">v{{VERSION}}</span>
-  <span class="grow"></span>
-  <a href="https://github.com/cybrium-ai/cy-tls" target="_blank" rel="noopener noreferrer">GitHub</a>
+  <div class="brand">
+    <img class="shield" src="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/logo_only.svg"   alt="Cybrium"/>
+    <img class="word"   src="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/cybrium_word.svg" alt="Cybrium"/>
+    <span class="divider">/</span>
+    <span class="tool">cy-tls · v{{VERSION}}</span>
+  </div>
+  <div class="actions">
+    <button type="button" id="theme-toggle" title="Toggle dark / light theme" aria-label="Toggle theme">
+      <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun"  width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <a href="https://github.com/cybrium-ai/cy-tls" target="_blank" rel="noopener noreferrer">GitHub</a>
+  </div>
 </header>
 
 <main>
-  <section class="panel" style="height: fit-content; position: sticky; top: 28px;">
+  <section class="card" style="height: fit-content; position: sticky; top: 78px;">
     <h2>New scan</h2>
     <label for="targets">Targets (one per line, <code>host</code> or <code>host:port</code>)</label>
     <textarea id="targets" placeholder="cybrium.ai&#10;example.com:443"></textarea>
@@ -250,18 +359,18 @@
       <label for="no_cipher_enum" style="margin: 0;">Skip cipher enumeration (faster)</label>
     </div>
 
-    <button class="primary" id="run">Run scan</button>
-    <button class="ghost"   id="clear">Clear results</button>
+    <button type="button" class="primary full" id="run">Run scan</button>
+    <button type="button" class="ghost full"   id="clear">Clear results</button>
   </section>
 
   <section id="results">
     <div class="exports-bar" id="exports-bar">
       <span class="lbl">Export</span>
-      <button class="exportbtn" data-fmt="json"  disabled>JSON</button>
-      <button class="exportbtn" data-fmt="jsonl" disabled>JSONL</button>
-      <button class="exportbtn" data-fmt="sarif" disabled>SARIF</button>
-      <button class="exportbtn" data-fmt="csv"   disabled>CSV</button>
-      <button class="exportbtn" data-fmt="html"  disabled>HTML</button>
+      <button type="button" class="exportbtn" data-fmt="json"  disabled>JSON</button>
+      <button type="button" class="exportbtn" data-fmt="jsonl" disabled>JSONL</button>
+      <button type="button" class="exportbtn" data-fmt="sarif" disabled>SARIF</button>
+      <button type="button" class="exportbtn" data-fmt="csv"   disabled>CSV</button>
+      <button type="button" class="exportbtn" data-fmt="html"  disabled>HTML</button>
     </div>
     <div id="content">
       <div class="panel"><div class="empty">Submit one or more targets to run a posture probe.</div></div>
@@ -274,6 +383,22 @@
 </div>
 
 <script>
+// ── theme bootstrap ────────────────────────────────────────────────
+(function () {
+  const KEY = "cybrium-theme";
+  const html = document.documentElement;
+  const saved = localStorage.getItem(KEY);
+  const sysLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+  html.dataset.theme = saved || (sysLight ? "light" : "dark");
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const next = html.dataset.theme === "dark" ? "light" : "dark";
+      html.dataset.theme = next;
+      localStorage.setItem(KEY, next);
+    });
+  });
+})();
+
 const el = (id) => document.getElementById(id);
 const $content = el("content"), $run = el("run"), $clear = el("clear");
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
@@ -307,7 +432,6 @@ async function runScan() {
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]); }
 function ynPill(v) { return v ? `<span class="pill yes">Yes</span>` : `<span class="pill no">No</span>`; }
-function naPill(v, neg) { if (v == null) return `<span class="pill na">n/a</span>`; return v ? `<span class="pill yes">${esc(v)}</span>` : `<span class="pill no">${neg||"No"}</span>`; }
 
 function gradeClass(g) {
   if (!g) return "X";
@@ -315,7 +439,6 @@ function gradeClass(g) {
   if (g === "A-") return "Aminus";
   return g.length === 1 ? g : "X";
 }
-
 function barClass(score) {
   if (score >= 80) return "";
   if (score >= 50) return "w50";
@@ -324,20 +447,18 @@ function barClass(score) {
 }
 
 function renderSummary(r) {
-  const g = r.grade || {};
-  const s = r.summary || {};
+  const g = r.grade || {}, s = r.summary || {};
   const grade = g.grade || "?";
   const protocol = g.protocol_score ?? 0;
   const keyx     = g.key_exchange_score ?? 0;
   const cipher   = g.cipher_score ?? 0;
-  // Certificate axis: 100 if mozilla_trusted, else 50, else 0 — derived since we don't store one explicitly.
   const trusted  = (r.certificate || {}).mozilla_trusted;
   const certScore= trusted === true ? 100 : (trusted === false ? 30 : 0);
   const verdictClass = s.passed === false ? (s.breach_indicators && s.breach_indicators.length ? "bad" : "warn") : "";
   const breaches = (s.breach_indicators || []).length;
   return `
   <div class="panel">
-    <div class="report-host">SSL Report: ${esc(r.target)} ${r.ip ? `<span style="color:var(--muted); font-weight:400; font-size:14px;">(${esc(r.ip)})</span>` : ""}</div>
+    <div class="report-host">SSL Report: ${esc(r.target)} ${r.ip ? `<span style="color:var(--text-muted); font-weight:400; font-size:14px;">(${esc(r.ip)})</span>` : ""}</div>
     <div class="report-meta">Assessed at: ${new Date().toUTCString()} · ${r.elapsed_ms||0} ms · ${(r.findings||[]).length} finding(s)${breaches ? ` · ${breaches} active breach indicator(s)` : ""}</div>
     <div class="summary-grid">
       <div class="grade-box grade-${gradeClass(grade)}" title="Composite grade">${esc(grade)}</div>
@@ -349,8 +470,8 @@ function renderSummary(r) {
       </div>
     </div>
     ${s.verdict_line ? `<div class="verdict ${verdictClass}">${esc(s.verdict_line)}</div>` : ""}
-    ${(g.grade_caps || []).length ? `<div style="margin-top:10px"><h3>Grade caps</h3>${g.grade_caps.map(c => `<div style="font-size:12px; color:var(--muted); margin:3px 0;">• ${esc(c)}</div>`).join("")}</div>` : ""}
-    ${(g.grade_bonuses || []).length ? `<div style="margin-top:10px"><h3>Grade bonuses</h3>${g.grade_bonuses.map(b => `<div style="font-size:12px; color:var(--green); margin:3px 0;">+ ${esc(b)}</div>`).join("")}</div>` : ""}
+    ${(g.grade_caps || []).length ? `<div style="margin-top:10px"><h3>Grade caps</h3>${g.grade_caps.map(c => `<div style="font-size:12px; color:var(--text-muted); margin:3px 0;">• ${esc(c)}</div>`).join("")}</div>` : ""}
+    ${(g.grade_bonuses || []).length ? `<div style="margin-top:10px"><h3>Grade bonuses</h3>${g.grade_bonuses.map(b => `<div style="font-size:12px; color:var(--ok); margin:3px 0;">+ ${esc(b)}</div>`).join("")}</div>` : ""}
   </div>`;
 }
 
@@ -383,7 +504,7 @@ function renderCert(r) {
       <div class="k">CRL distribution</div>  <div class="v">${(c.crl_distribution_points||[]).map(esc).join("<br>")||"—"}</div>
       <div class="k">DNS CAA</div>           <div class="v ${(r.caa_records||[]).length?'good':'warn'}">${(r.caa_records||[]).length?(r.caa_records.map(esc).join("<br>")):"No CAA records published"}</div>
       <div class="k">Chain length</div>      <div class="v">${c.chain_length||0} cert(s), ${c.chain_complete?'complete':'incomplete'}, ${c.chain_order_correct?'order ok':'order INCORRECT'}</div>
-      <div class="k">Mozilla trusted</div>   <div class="v ${c.mozilla_trusted?'good':'bad'}">${ynPill(c.mozilla_trusted)}${c.trust_reason?` — <span style="color:var(--muted)">${esc(c.trust_reason)}</span>`:""}</div>
+      <div class="k">Mozilla trusted</div>   <div class="v ${c.mozilla_trusted?'good':'bad'}">${ynPill(c.mozilla_trusted)}${c.trust_reason?` — <span style="color:var(--text-muted)">${esc(c.trust_reason)}</span>`:""}</div>
       <div class="k">Trusted by</div><div class="v">
         <div class="trust-tabs">
           <div class="trust-tab ${ts.mozilla?'ok':'bad'}">Mozilla ${ts.mozilla?'✓':'✗'}</div>
@@ -398,7 +519,6 @@ function renderCert(r) {
 
 function renderConfig(r) {
   const p = r.protocols || {};
-  const ke = r.key_exchange || {};
   return `
   <div class="panel">
     <h2>Configuration</h2>
@@ -524,10 +644,10 @@ function renderFindings(r) {
         ${findings.map(f => `
           <tr>
             <td><span class="sev ${f.severity}">${f.severity}</span></td>
-            <td><code style="font-size:11px">${esc(f.id)}</code>${f.reference_url ? `<br><a href="${esc(f.reference_url)}" target="_blank" style="font-size:10px; color:var(--muted)">ref ↗</a>` : ""}</td>
+            <td><code style="font-size:11px">${esc(f.id)}</code>${f.reference_url ? `<br><a href="${esc(f.reference_url)}" target="_blank" rel="noopener noreferrer" style="font-size:10px; color:var(--text-muted)">ref ↗</a>` : ""}</td>
             <td>
-              <div style="color:var(--fg-bright); font-size:13px;">${esc(f.title)}</div>
-              <div style="color:var(--muted); font-size:12px; margin-top:3px;">${esc(f.evidence||"")}</div>
+              <div style="color:var(--text); font-size:13px;">${esc(f.title)}</div>
+              <div style="color:var(--text-muted); font-size:12px; margin-top:3px;">${esc(f.evidence||"")}</div>
               ${f.remediation ? `<div class="fix">Fix: ${esc(f.remediation)}</div>` : ""}
             </td>
           </tr>`).join("")}
