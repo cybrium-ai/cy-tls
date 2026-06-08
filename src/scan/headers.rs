@@ -118,6 +118,12 @@ pub struct HeaderInfo {
     /// useful externally; leaks intermediate infra to attackers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
+    /// v0.5.54 — Content-Type response header from the root GET.
+    /// Surfaced raw so dashboards can inventory + classify response
+    /// content types. Used to emit HTTP-CONTENT-TYPE-NO-CHARSET when
+    /// the type is text-y but no charset is declared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -238,6 +244,22 @@ impl HeaderInfo {
                 host,
                 format!("Via header present: {v}"),
             ));
+        }
+        // v0.5.54 — Content-Type charset hygiene. An HTML response
+        // without an explicit charset lets the browser sniff (or
+        // default to the OS locale), enabling UTF-7-based XSS bypasses
+        // and Latin-1 character-set surprises. Fires only for text/*
+        // / application/xhtml+xml types.
+        if let Some(ct) = self.content_type.as_deref() {
+            let lower = ct.to_ascii_lowercase();
+            let is_text = lower.starts_with("text/") || lower.starts_with("application/xhtml");
+            if is_text && !lower.contains("charset=") {
+                findings.push(make(
+                    "HTTP-CONTENT-TYPE-NO-CHARSET",
+                    host,
+                    format!("Content-Type \"{ct}\" lacks an explicit charset — browser will sniff (UTF-7 / Latin-1 XSS-bypass surface). Add `; charset=utf-8` to the response"),
+                ));
+            }
         }
         // v0.5.49 — TRACE method (XST surface). Parse comma-separated
         // Allow header, case-insensitive match on TRACE.
@@ -461,6 +483,12 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             info.via = Some(trimmed.to_string());
+        }
+    }
+    if let Some(v) = response.header("content-type") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.content_type = Some(trimmed.to_string());
         }
     }
 

@@ -218,6 +218,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     // ── CAA hygiene (v0.5.53) ───────────────────────────────────────
     ("DNS-CAA-NO-IODEF",     Severity::Info, "CAA records are published but none has an `iodef` property tag (RFC 8657). Without iodef, a CA noticing a disallowed-issuance attempt has no operator endpoint to send a notification to"),
     ("DNS-CAA-NO-ISSUEWILD", Severity::Low,  "CAA records published with `issue` policy but no `issuewild`. Wildcards inherit the issue policy by default, so CAs in the issue list may also issue wildcards. Add an explicit `issuewild` line (or `0 issuewild \";\"` to deny wildcards entirely)"),
+
+    // ── Content-Type hygiene (v0.5.54) ──────────────────────────────
+    ("HTTP-CONTENT-TYPE-NO-CHARSET", Severity::Low, "Response Content-Type is text-y (text/* or application/xhtml*) but lacks an explicit `charset=` parameter. Browser falls back to sniffing or OS-locale defaults, enabling UTF-7-based XSS bypass and Latin-1 character-confusion attacks"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -295,9 +298,10 @@ mod tests {
         // TLS-CERT-INTERMEDIATE-EXPIRED. v0.5.52 added
         // HTTP-SERVER-TIMING-PRESENT + HTTP-VIA-PRESENT.
         // v0.5.53 added DNS-CAA-NO-IODEF + DNS-CAA-NO-ISSUEWILD.
+        // v0.5.54 added HTTP-CONTENT-TYPE-NO-CHARSET.
         assert_eq!(
             FINDING_CATALOG.len(),
-            86,
+            87,
             "FINDING_CATALOG size drifted from spec"
         );
     }

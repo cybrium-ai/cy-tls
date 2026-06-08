@@ -281,6 +281,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         "DNS-CAA-NO-IODEF" => vec!["RFC 8657", "CA/B Forum BR §3.2.2.8"],
         "DNS-CAA-NO-ISSUEWILD" => vec!["RFC 8659 §4.3", "CA/B Forum BR §3.2.2.8"],
 
+        // ── Content-Type hygiene (v0.5.54) ──────────────────────────
+        "HTTP-CONTENT-TYPE-NO-CHARSET" => vec![
+            "OWASP ASVS 14.4.5",
+            "NIST 800-53 SI-10",
+            "CIS Apache Benchmark §6.4",
+        ],
+
         _ => vec![],
     }
 }
