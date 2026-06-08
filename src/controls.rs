@@ -250,6 +250,11 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "ASV Program Guide §6.1 Table 1 — Insecure communications",
         ],
 
+        // ── Shared-infra cert (v0.5.48) ─────────────────────────────
+        // Informational — no compliance control failure, but useful
+        // posture context for third-party-key reviews.
+        "TLS-CERT-SHARED-INFRA-CERT" => vec![],
+
         _ => vec![],
     }
 }

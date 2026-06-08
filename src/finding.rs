@@ -200,6 +200,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── HTTP→HTTPS redirect (v0.5.47) ───────────────────────────────
     ("HTTP-NO-REDIRECT-TO-HTTPS", Severity::High, "Port 80 either serves content directly (2xx response) or redirects somewhere other than https://. PCI DSS 4.0 §4.2.1 requires migration of all clear-text channels — listeners on 80 must return a 301/308 to https:// or refuse the connection entirely"),
+
+    // ── Shared-infra cert (v0.5.48) ─────────────────────────────────
+    ("TLS-CERT-SHARED-INFRA-CERT", Severity::Info, "Leaf cert SAN count exceeds 100 — the Cloudflare / Fastly / SaaS-edge multi-tenant cert pattern. Not a vulnerability; informational data point for compliance scoping and third-party-keypair ownership review"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -271,9 +274,10 @@ mod tests {
         // v0.5.46 added HTTP-COOKIE-NO-SECURE + HTTP-COOKIE-NO-HTTPONLY
         // + HTTP-COOKIE-NO-SAMESITE + HTTP-CACHE-CONTROL-MISSING.
         // v0.5.47 added HTTP-NO-REDIRECT-TO-HTTPS.
+        // v0.5.48 added TLS-CERT-SHARED-INFRA-CERT.
         assert_eq!(
             FINDING_CATALOG.len(),
-            78,
+            79,
             "FINDING_CATALOG size drifted from spec"
         );
     }

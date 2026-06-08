@@ -363,6 +363,21 @@ impl CertificateInfo {
                 ));
             }
         }
+        // v0.5.48 — shared-infra cert: >100 SANs is the Cloudflare /
+        // Fastly multi-tenant cert signature. Not a vulnerability, but
+        // operators often want to know they're on shared infra
+        // (compliance scoping, BAA / DPA review, key-rotation
+        // dependency on a third party).
+        if self.san.len() > 100 {
+            findings.push(make(
+                "TLS-CERT-SHARED-INFRA-CERT",
+                host,
+                format!(
+                    "Leaf cert SAN count = {} — this is the multi-tenant cert pattern used by Cloudflare / Fastly / SaaS edge providers. Posture data point: the TLS keypair is operated by a third party",
+                    self.san.len()
+                ),
+            ));
+        }
     }
 }
 
