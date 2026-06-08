@@ -114,6 +114,13 @@ pub struct ScanReport {
     /// doesn't validate the parent-DS chain end-to-end (that needs a
     /// DNSSEC-validating resolver, out of scope for cy-tls).
     pub dnssec_signed: bool,
+    /// v0.5.68 — number of DANE TLSA records (RFC 6698) published
+    /// at _<port>._tcp.<host>. Non-zero is the strongest possible
+    /// trust-pinning signal — the operator has explicitly bound the
+    /// expected cert / key to DNS, and DNSSEC-validating clients
+    /// will reject any cert that doesn't match. Banks, govt, high-
+    /// security infra typically publish these.
+    pub dane_tlsa_count: u32,
     /// v0.5.47 — HTTP→HTTPS redirect audit. Probes port 80 with
     /// redirects disabled. Empty (tested=false) when port 80 isn't
     /// reachable at all — that's the best posture.
@@ -912,6 +919,16 @@ async fn scan_one(
         dns_soa::lookup_dnssec(host_str, timeout).await
     };
 
+    // v0.5.68 — DANE TLSA presence (RFC 6698). Use the target's actual
+    // port from the parsed target. Default 443 when omitted.
+    let dane_tlsa_count = {
+        let (host_str, port) = match target.rsplit_once(':') {
+            Some((h, p)) => (h, p.parse::<u16>().unwrap_or(443)),
+            None => (target, 443),
+        };
+        dns_soa::lookup_tlsa(host_str, port, timeout).await
+    };
+
     // v0.5.47 — HTTP→HTTPS redirect audit on port 80.
     let http_redirect_result = {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
@@ -995,6 +1012,7 @@ async fn scan_one(
         dns_soa,
         dns_ns,
         dnssec_signed,
+        dane_tlsa_count,
         http_redirect: http_redirect_result,
         grade: grade_report,
         summary: summary_block,
@@ -1057,6 +1075,7 @@ fn stub_report(
         dns_soa: None,
         dns_ns: Vec::new(),
         dnssec_signed: false,
+        dane_tlsa_count: 0,
         http_redirect: http_redirect::HttpRedirect::default(),
         grade: grade::GradeReport::default(),
         summary: summary::ScanSummary::default(),

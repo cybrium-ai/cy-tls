@@ -137,6 +137,22 @@ pub async fn lookup_dnssec(host: &str, deadline: Duration) -> bool {
     result.ok().flatten().unwrap_or(false)
 }
 
+/// v0.5.68 — TLSA presence check (RFC 6698 / DANE). DNSSEC-backed
+/// TLS certificate pinning. We just count records — semantic
+/// alignment vs the actual cert SPKI is a future-release add. Returns
+/// 0 when no TLSA records published or DNS fails. Looks at the
+/// canonical _443._tcp.<host> name.
+pub async fn lookup_tlsa(host: &str, port: u16, deadline: Duration) -> u32 {
+    let result = timeout(deadline.min(Duration::from_secs(5)), async {
+        let resolver = Resolver::builder_tokio().ok()?.build();
+        let qname = format!("_{port}._tcp.{host}");
+        let lookup = resolver.lookup(qname, RecordType::TLSA).await.ok()?;
+        Some(lookup.record_iter().count() as u32)
+    })
+    .await;
+    result.ok().flatten().unwrap_or(0)
+}
+
 /// v0.5.40 — list authoritative NS records for the target zone.
 /// Returns sorted-deduplicated hostnames (trailing-dot stripped) so
 /// the output is deterministic across hickory random round-trips.

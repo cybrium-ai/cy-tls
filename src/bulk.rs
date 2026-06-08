@@ -90,6 +90,7 @@ fn failed_report(target: String) -> ScanReport {
         dns_soa: None,
         dns_ns: Vec::new(),
         dnssec_signed: false,
+        dane_tlsa_count: 0,
         http_redirect: Default::default(),
         grade: Default::default(),
         summary: Default::default(),
