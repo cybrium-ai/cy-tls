@@ -303,6 +303,22 @@ impl HeaderInfo {
                 "Neither X-Frame-Options nor CSP frame-ancestors directive set — site is embeddable in a cross-origin <iframe> (clickjacking surface)",
             ));
         }
+        // v0.5.65 — X-Content-Type-Options: nosniff. Without it,
+        // browsers MIME-sniff response bodies and may execute a
+        // text/css response as JS (CSS-as-script), an image as HTML
+        // (image-polyglot XSS), etc. Trivial one-line server config.
+        let nosniff_ok = self
+            .x_content_type_options
+            .as_deref()
+            .map(|v| v.trim().eq_ignore_ascii_case("nosniff"))
+            .unwrap_or(false);
+        if !nosniff_ok {
+            findings.push(make(
+                "HTTP-NOSNIFF-MISSING",
+                host,
+                "X-Content-Type-Options header is absent or not set to 'nosniff' — browsers will MIME-sniff response bodies, enabling CSS-as-script and image-polyglot XSS vectors",
+            ));
+        }
         // v0.5.55 — legacy Report-To header (deprecated by W3C in
         // favor of Reporting-Endpoints). Browsers are dropping support
         // — Chrome shipping plan removes it through 2025.

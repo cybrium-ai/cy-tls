@@ -247,6 +247,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("HTTP-CSP-MISSING",            Severity::Low,    "No Content-Security-Policy or Content-Security-Policy-Report-Only header. CSP is the strongest browser-level XSS / data-exfil mitigation; modern web apps should have it"),
     ("HTTP-CSP-UNSAFE-INLINE",      Severity::Medium, "CSP policy contains 'unsafe-inline' — defeats most of the XSS-mitigation value of CSP. Use nonces or hashes per directive instead"),
     ("HTTP-X-FRAME-OPTIONS-MISSING", Severity::Low,   "Neither X-Frame-Options nor CSP frame-ancestors directive set — site is embeddable in a cross-origin iframe, which is the clickjacking-attack prerequisite"),
+
+    // ── MIME sniffing (v0.5.65) ─────────────────────────────────────
+    ("HTTP-NOSNIFF-MISSING", Severity::Low, "X-Content-Type-Options header is absent or not set to 'nosniff' — browsers will MIME-sniff response bodies, enabling CSS-as-script and image-polyglot XSS vectors"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -331,9 +334,10 @@ mod tests {
         // TLS-CERT-SCT-COUNT-INSUFFICIENT. v0.5.61 added
         // TLS-CHAIN-NOT-TRUSTED-MOZILLA. v0.5.64 added HTTP-CSP-MISSING,
         // HTTP-CSP-UNSAFE-INLINE, HTTP-X-FRAME-OPTIONS-MISSING.
+        // v0.5.65 added HTTP-NOSNIFF-MISSING.
         assert_eq!(
             FINDING_CATALOG.len(),
-            93,
+            94,
             "FINDING_CATALOG size drifted from spec"
         );
     }

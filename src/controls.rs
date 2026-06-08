@@ -314,6 +314,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             vec!["OWASP ASVS 14.4.7", "NIST 800-53 SI-10", "RFC 7034"]
         }
 
+        // ── nosniff (v0.5.65) ───────────────────────────────────────
+        "HTTP-NOSNIFF-MISSING" => vec!["OWASP ASVS 14.4.5", "MIME Sniffing Standard §6"],
+
         _ => vec![],
     }
 }

@@ -70,6 +70,9 @@ pub fn for_id(id: &str) -> &'static str {
             "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
         }
         "HTTP-X-FRAME-OPTIONS-MISSING" => "https://datatracker.ietf.org/doc/html/rfc7034",
+        "HTTP-NOSNIFF-MISSING" => {
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+        }
 
         // ── OCSP / SCT ──────────────────────────────────────────────
         "TLS-OCSP-NOT-STAPLED" => "https://datatracker.ietf.org/doc/html/rfc6066#section-8",

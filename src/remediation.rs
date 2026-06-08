@@ -55,6 +55,7 @@ pub fn for_id(id: &str) -> &'static str {
         "HTTP-CSP-MISSING" => "Add a Content-Security-Policy response header. Start with `Content-Security-Policy-Report-Only` to inventory violations in production, then promote to enforcing once clean. Mozilla Observatory has a CSP generator.",
         "HTTP-CSP-UNSAFE-INLINE" => "Replace `'unsafe-inline'` with per-element nonces (`nonce-<random>`) or hashes (`sha256-...`). For inline event handlers (`onclick=`) move to addEventListener. Modern frameworks (React, Vue, Angular) all support nonce-based CSP out of the box.",
         "HTTP-X-FRAME-OPTIONS-MISSING" => "Add `X-Frame-Options: SAMEORIGIN` OR a `Content-Security-Policy: frame-ancestors 'self'` directive. The CSP form is the modern equivalent and supersedes XFO when set.",
+        "HTTP-NOSNIFF-MISSING" => "Add `X-Content-Type-Options: nosniff` to every response. nginx: `add_header X-Content-Type-Options nosniff always;`. Apache: `Header always set X-Content-Type-Options nosniff`. One line, zero downside.",
         "TLS-CERT-SHARED-INFRA-CERT" => "",
 
         // ── OCSP / SCT ──────────────────────────────────────────────
