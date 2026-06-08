@@ -242,6 +242,11 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Trust outcome (v0.5.61) ─────────────────────────────────────
     ("TLS-CHAIN-NOT-TRUSTED-MOZILLA", Severity::High, "Chain fails the Mozilla / webpki trust-store validation (strict-mode handshake rejected). Fires only when none of the more-specific cert findings already explain the failure — usually means an issuer that's not in the public trust store (private CA, decommissioned-but-still-deployed root, etc)"),
+
+    // ── CSP + XFO (v0.5.64) ─────────────────────────────────────────
+    ("HTTP-CSP-MISSING",            Severity::Low,    "No Content-Security-Policy or Content-Security-Policy-Report-Only header. CSP is the strongest browser-level XSS / data-exfil mitigation; modern web apps should have it"),
+    ("HTTP-CSP-UNSAFE-INLINE",      Severity::Medium, "CSP policy contains 'unsafe-inline' — defeats most of the XSS-mitigation value of CSP. Use nonces or hashes per directive instead"),
+    ("HTTP-X-FRAME-OPTIONS-MISSING", Severity::Low,   "Neither X-Frame-Options nor CSP frame-ancestors directive set — site is embeddable in a cross-origin iframe, which is the clickjacking-attack prerequisite"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -324,10 +329,11 @@ mod tests {
         // v0.5.54 added HTTP-CONTENT-TYPE-NO-CHARSET. v0.5.55 added
         // HTTP-DEPRECATED-REPORT-TO. v0.5.56 added
         // TLS-CERT-SCT-COUNT-INSUFFICIENT. v0.5.61 added
-        // TLS-CHAIN-NOT-TRUSTED-MOZILLA.
+        // TLS-CHAIN-NOT-TRUSTED-MOZILLA. v0.5.64 added HTTP-CSP-MISSING,
+        // HTTP-CSP-UNSAFE-INLINE, HTTP-X-FRAME-OPTIONS-MISSING.
         assert_eq!(
             FINDING_CATALOG.len(),
-            90,
+            93,
             "FINDING_CATALOG size drifted from spec"
         );
     }

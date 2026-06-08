@@ -52,6 +52,9 @@ pub fn for_id(id: &str) -> &'static str {
         "TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE" => "Verify the URL in the AIA caIssuers extension is reachable. If the CA has rotated, reissue with the current chain so the URL points somewhere valid.",
         "TLS-CERT-SCT-COUNT-INSUFFICIENT" => "Reissue from a CA that embeds enough SCTs to meet Chrome's 2022 policy: < 180-day certs need ≥ 2 SCTs, ≥ 180-day need ≥ 3. Most public CAs already do this.",
         "TLS-CHAIN-NOT-TRUSTED-MOZILLA" => "Reissue from a publicly-trusted CA whose root is in the Mozilla Included CA list (Let's Encrypt, DigiCert, Sectigo, GlobalSign — all free or low-cost). If this is an internal-only service using a private CA, that's expected; ensure clients have the private root pinned.",
+        "HTTP-CSP-MISSING" => "Add a Content-Security-Policy response header. Start with `Content-Security-Policy-Report-Only` to inventory violations in production, then promote to enforcing once clean. Mozilla Observatory has a CSP generator.",
+        "HTTP-CSP-UNSAFE-INLINE" => "Replace `'unsafe-inline'` with per-element nonces (`nonce-<random>`) or hashes (`sha256-...`). For inline event handlers (`onclick=`) move to addEventListener. Modern frameworks (React, Vue, Angular) all support nonce-based CSP out of the box.",
+        "HTTP-X-FRAME-OPTIONS-MISSING" => "Add `X-Frame-Options: SAMEORIGIN` OR a `Content-Security-Policy: frame-ancestors 'self'` directive. The CSP form is the modern equivalent and supersedes XFO when set.",
         "TLS-CERT-SHARED-INFRA-CERT" => "",
 
         // ── OCSP / SCT ──────────────────────────────────────────────

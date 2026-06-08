@@ -306,6 +306,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "CA/B Forum BR §3.2",
         ],
 
+        // ── CSP + XFO (v0.5.64) ─────────────────────────────────────
+        "HTTP-CSP-MISSING" | "HTTP-CSP-UNSAFE-INLINE" => {
+            vec!["OWASP ASVS 14.4.3", "NIST 800-53 SI-10", "CSP Level 3"]
+        }
+        "HTTP-X-FRAME-OPTIONS-MISSING" => {
+            vec!["OWASP ASVS 14.4.7", "NIST 800-53 SI-10", "RFC 7034"]
+        }
+
         _ => vec![],
     }
 }

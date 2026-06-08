@@ -264,6 +264,45 @@ impl HeaderInfo {
                 format!("Via header present: {v}"),
             ));
         }
+        // v0.5.64 — CSP + X-Frame-Options policy audit. CSP is the
+        // single biggest defence against XSS / data-exfil; missing it
+        // is a Low signal, having it with unsafe-inline directives
+        // negates most of the value.
+        let has_csp = self.content_security_policy.is_some();
+        let has_csp_ro = self.content_security_policy_report_only.is_some();
+        if !has_csp && !has_csp_ro {
+            findings.push(make(
+                "HTTP-CSP-MISSING",
+                host,
+                "No Content-Security-Policy or Content-Security-Policy-Report-Only header — site offers no browser-level XSS / data-exfil mitigation beyond X-Content-Type-Options",
+            ));
+        }
+        if let Some(csp) = self.content_security_policy.as_deref() {
+            let lower = csp.to_ascii_lowercase();
+            if lower.contains("'unsafe-inline'") || lower.contains("unsafe-inline") {
+                findings.push(make(
+                    "HTTP-CSP-UNSAFE-INLINE",
+                    host,
+                    format!("CSP policy contains 'unsafe-inline' — defeats most of the XSS-mitigation value of CSP. Use nonces or hashes instead: {csp}"),
+                ));
+            }
+        }
+        // v0.5.64 — clickjacking gap. Either X-Frame-Options OR a CSP
+        // frame-ancestors directive must be present; the latter is the
+        // modern equivalent and supersedes XFO when set.
+        let has_xfo = self.x_frame_options.is_some();
+        let has_csp_frame_ancestors = self
+            .content_security_policy
+            .as_deref()
+            .map(|c| c.to_ascii_lowercase().contains("frame-ancestors"))
+            .unwrap_or(false);
+        if !has_xfo && !has_csp_frame_ancestors {
+            findings.push(make(
+                "HTTP-X-FRAME-OPTIONS-MISSING",
+                host,
+                "Neither X-Frame-Options nor CSP frame-ancestors directive set — site is embeddable in a cross-origin <iframe> (clickjacking surface)",
+            ));
+        }
         // v0.5.55 — legacy Report-To header (deprecated by W3C in
         // favor of Reporting-Endpoints). Browsers are dropping support
         // — Chrome shipping plan removes it through 2025.

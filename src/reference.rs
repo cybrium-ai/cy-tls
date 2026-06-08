@@ -66,6 +66,10 @@ pub fn for_id(id: &str) -> &'static str {
         }
         "TLS-CERT-SHARED-INFRA-CERT" => "https://www.cloudflare.com/learning/ssl/what-is-ssl/",
         "TLS-CHAIN-NOT-TRUSTED-MOZILLA" => "https://wiki.mozilla.org/CA/Included_Certificates",
+        "HTTP-CSP-MISSING" | "HTTP-CSP-UNSAFE-INLINE" => {
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+        }
+        "HTTP-X-FRAME-OPTIONS-MISSING" => "https://datatracker.ietf.org/doc/html/rfc7034",
 
         // ── OCSP / SCT ──────────────────────────────────────────────
         "TLS-OCSP-NOT-STAPLED" => "https://datatracker.ietf.org/doc/html/rfc6066#section-8",
