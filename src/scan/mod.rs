@@ -30,6 +30,7 @@ mod pqc;
 mod protocol;
 mod server_fingerprint;
 mod session;
+mod summary;
 mod timing;
 mod tls12_crypto;
 mod tls12_features;
@@ -123,6 +124,11 @@ pub struct ScanReport {
     /// of grade caps (vulnerabilities holding the grade down), and a
     /// list of grade bonuses (TLS 1.3 + FS-modern + HSTS = A+).
     pub grade: grade::GradeReport,
+    /// v0.5.58 — top-of-report summary block. Severity-bucketed
+    /// counts + plain-English verdict_line + breach_indicators list.
+    /// Dashboards / alerting can read the banner straight from here
+    /// without iterating findings.
+    pub summary: summary::ScanSummary,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -966,6 +972,7 @@ async fn scan_one(
         &findings,
         forward_secrecy_bucket,
     );
+    let summary_block = summary::compute(&findings, &grade_report);
     Ok(ScanReport {
         target: target.into(),
         ip,
@@ -990,6 +997,7 @@ async fn scan_one(
         dnssec_signed,
         http_redirect: http_redirect_result,
         grade: grade_report,
+        summary: summary_block,
     })
 }
 
@@ -1051,6 +1059,7 @@ fn stub_report(
         dnssec_signed: false,
         http_redirect: http_redirect::HttpRedirect::default(),
         grade: grade::GradeReport::default(),
+        summary: summary::ScanSummary::default(),
     }
 }
 

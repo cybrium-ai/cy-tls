@@ -92,6 +92,7 @@ fn failed_report(target: String) -> ScanReport {
         dnssec_signed: false,
         http_redirect: Default::default(),
         grade: Default::default(),
+        summary: Default::default(),
     }
 }
 
