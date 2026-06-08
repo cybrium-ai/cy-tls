@@ -14,12 +14,14 @@ mod controls;
 mod error;
 mod finding;
 mod gui;
+mod hardware_rot;
 mod mcp;
 mod output;
 mod preload;
 mod reference;
 mod remediation;
 mod scan;
+mod self_update;
 
 use clap::Parser;
 use cli::{Cli, Command};
@@ -42,5 +44,15 @@ async fn main() -> anyhow::Result<()> {
         Command::VerifyPreload(args) => preload::verify(args),
         Command::Gui(args) => gui::run(args).await,
         Command::Mcp => mcp::run().await,
+        Command::Rot => {
+            let rot = hardware_rot::detect();
+            println!("{}", serde_json::to_string_pretty(&rot)?);
+            Ok(())
+        }
+        Command::Update | Command::Upgrade => {
+            // Run sync ureq inside spawn_blocking so we don't block the
+            // tokio reactor on the network round-trip + binary write.
+            tokio::task::spawn_blocking(self_update::run).await?
+        }
     }
 }

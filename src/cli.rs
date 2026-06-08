@@ -54,6 +54,20 @@ pub enum Command {
     /// Model Context Protocol server — JSON-RPC over stdio. Lets Claude or
     /// other MCP-aware agents call cy-tls as a tool.
     Mcp,
+
+    /// Detect the host's hardware root-of-trust (TPM 2.0 / TPM 1.2 / Apple
+    /// Secure Enclave). Emits JSON. Detection-only — does not drive the
+    /// TPM, generate AIKs, or sign payloads.
+    Rot,
+
+    /// Check GitHub releases for a newer cy-tls and self-replace this
+    /// binary with it. Idempotent: prints "Already up to date" + exits 0
+    /// when current.
+    Update,
+
+    /// Alias for `update` — matches the `brew upgrade` / `scoop update`
+    /// vocabulary users expect.
+    Upgrade,
 }
 
 #[derive(Debug, Args)]
