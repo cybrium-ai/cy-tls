@@ -59,8 +59,10 @@ pub async fn run(args: GuiArgs) -> Result<()> {
     Ok(())
 }
 
-async fn index() -> Html<&'static str> {
-    Html(INDEX_HTML)
+async fn index() -> Html<String> {
+    // v0.5.73 — substitute the live binary version into the header so
+    // the GUI never shows a stale hard-coded "v0.1.0".
+    Html(INDEX_HTML.replace("{{VERSION}}", env!("CARGO_PKG_VERSION")))
 }
 
 #[derive(Debug, Deserialize)]

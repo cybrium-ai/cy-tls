@@ -21,6 +21,14 @@
     --low:        #38bdf8;
     --info:       #94a3b8;
     --green:      #22c55e;
+    --grade-aplus:#15803d;
+    --grade-a:    #22c55e;
+    --grade-b:    #84cc16;
+    --grade-c:    #eab308;
+    --grade-d:    #f97316;
+    --grade-e:    #ef4444;
+    --grade-f:    #b91c1c;
+    --grade-t:    #7c3aed;
   }
   * { box-sizing: border-box; }
   body {
@@ -43,17 +51,21 @@
   header a:hover      { color: var(--fg-bright); }
 
   main {
-    max-width: 1280px; margin: 0 auto; padding: 28px;
-    display: grid; grid-template-columns: 380px 1fr; gap: 24px;
+    max-width: 1400px; margin: 0 auto; padding: 28px;
+    display: grid; grid-template-columns: 340px 1fr; gap: 24px;
   }
 
   .panel {
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 20px;
+    border-radius: 8px; padding: 20px; margin-bottom: 18px;
   }
   .panel h2 {
     margin: 0 0 14px; font-size: 14px;
     text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  }
+  .panel h3 {
+    margin: 16px 0 8px; font-size: 13px; font-weight: 600; color: var(--fg-bright);
+    text-transform: uppercase; letter-spacing: 0.06em;
   }
   label   { display: block; margin: 10px 0 6px; font-size: 13px; color: var(--muted); }
   input, textarea, select {
@@ -78,18 +90,93 @@
     margin-top: 8px; padding: 7px 12px;
     background: transparent; color: var(--muted);
     border: 1px solid var(--border); border-radius: 5px;
-    font-size: 12px; cursor: pointer;
+    font-size: 12px; cursor: pointer; width: 100%;
   }
   button.ghost:hover { color: var(--fg-bright); border-color: var(--primary-2); }
   .exportbtn {
-    padding: 5px 10px; background: var(--panel-2); color: var(--fg);
+    padding: 6px 12px; background: var(--panel-2); color: var(--fg);
     border: 1px solid var(--border); border-radius: 5px;
     font-size: 11px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
     transition: all 0.12s;
   }
   .exportbtn:hover { background: var(--primary); color: var(--fg-bright); border-color: var(--primary); }
-  #exports { display: none; }
-  #exports.shown { display: flex; gap: 6px; }
+  .exportbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Summary card with grade + axis bars */
+  .summary-grid {
+    display: grid; grid-template-columns: 180px 1fr; gap: 28px; align-items: center;
+    margin-bottom: 18px;
+  }
+  .grade-box {
+    width: 180px; height: 180px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px; font-weight: 700; color: var(--fg-bright);
+    text-shadow: 0 2px 6px rgba(0,0,0,0.35);
+  }
+  .grade-Aplus { background: var(--grade-aplus); }
+  .grade-A     { background: var(--grade-a); }
+  .grade-Aminus{ background: var(--grade-a); }
+  .grade-B     { background: var(--grade-b); }
+  .grade-C     { background: var(--grade-c); }
+  .grade-D     { background: var(--grade-d); }
+  .grade-E     { background: var(--grade-e); }
+  .grade-F     { background: var(--grade-f); }
+  .grade-T     { background: var(--grade-t); }
+  .grade-X     { background: var(--panel-2); color: var(--muted); font-size: 22px; }
+
+  .axis-rows { display: grid; gap: 10px; }
+  .axis-row { display: grid; grid-template-columns: 140px 1fr 40px; gap: 12px; align-items: center; font-size: 13px; }
+  .axis-row .label { color: var(--muted); }
+  .axis-row .bar-track { height: 16px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+  .axis-row .bar-fill  { height: 100%; background: var(--green); transition: width 0.3s; }
+  .axis-row .bar-fill.w50 { background: var(--medium); }
+  .axis-row .bar-fill.w30 { background: var(--high); }
+  .axis-row .bar-fill.w10 { background: var(--critical); }
+  .axis-row .val { text-align: right; color: var(--fg-bright); font-family: ui-monospace, monospace; font-size: 12px; }
+
+  .verdict {
+    margin-top: 14px; padding: 10px 14px;
+    background: var(--panel-2); border-left: 3px solid var(--primary-2);
+    border-radius: 4px; font-size: 13px; color: var(--fg-bright);
+  }
+  .verdict.warn  { border-color: var(--medium); }
+  .verdict.bad   { border-color: var(--critical); }
+
+  .kvgrid {
+    display: grid; grid-template-columns: 200px 1fr; gap: 6px 14px;
+    font-size: 13px;
+  }
+  .kvgrid .k { color: var(--muted); padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .kvgrid .v { color: var(--fg); padding: 6px 0; border-bottom: 1px solid var(--border); font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+  .kvgrid .v.good { color: var(--green); }
+  .kvgrid .v.bad  { color: var(--critical); }
+  .kvgrid .v.warn { color: var(--medium); }
+
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .pill.yes { background: rgba(34,197,94,0.18); color: var(--green); }
+  .pill.no  { background: rgba(239,68,68,0.18); color: var(--critical); }
+  .pill.na  { background: var(--panel-2); color: var(--muted); }
+
+  .trust-tabs { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
+  .trust-tab {
+    padding: 8px 14px; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 5px; font-size: 13px; display: flex; align-items: center; gap: 8px;
+  }
+  .trust-tab.ok  { border-color: var(--green); color: var(--green); }
+  .trust-tab.bad { border-color: var(--critical); color: var(--critical); }
+
+  .cipher-list { display: grid; gap: 4px; font-family: ui-monospace, monospace; font-size: 12px; }
+  .cipher-row {
+    display: grid; grid-template-columns: 1fr 60px 40px; gap: 12px; align-items: center;
+    padding: 5px 10px; background: var(--panel-2); border-radius: 4px;
+  }
+  .cipher-row .name { color: var(--fg-bright); }
+  .cipher-row .fs   { color: var(--green); font-size: 10px; }
+  .cipher-row .bits { text-align: right; color: var(--muted); }
 
   .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
   .tile  { text-align: center; padding: 12px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; }
@@ -113,15 +200,29 @@
   .sev.info     { background: rgba(148,163,184,0.18); color: var(--info); }
 
   .target-pill { display: inline-block; padding: 2px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--fg-bright); }
+  .fix { color: var(--muted); font-size: 12px; margin-top: 4px; font-style: italic; }
 
   .empty {
     padding: 64px 20px; text-align: center; color: var(--muted); font-size: 14px;
   }
+  .report-host {
+    font-size: 18px; font-weight: 600; color: var(--fg-bright); margin-bottom: 4px;
+  }
+  .report-meta { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+
+  .exports-bar {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
+    padding: 10px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .exports-bar .lbl { color: var(--muted); font-size: 11px; align-self: center; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
 
   .footer { padding: 18px 28px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); text-align: center; }
   .footer code { color: var(--fg); }
 
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -130,16 +231,16 @@
   <img class="wordmark" src="https://cybriumstorage.blob.core.windows.net/whitepapers/deck/cybrium_word.svg" alt="Cybrium"/>
   <span class="sep">/</span>
   <span class="toolname">cy-tls</span>
-  <span class="toolversion" id="version">v0.1.0</span>
+  <span class="toolversion" id="version">v{{VERSION}}</span>
   <span class="grow"></span>
-  <a href="https://github.com/cybrium-ai/cy-tls" target="_blank">GitHub</a>
+  <a href="https://github.com/cybrium-ai/cy-tls" target="_blank" rel="noopener noreferrer">GitHub</a>
 </header>
 
 <main>
-  <section class="panel">
+  <section class="panel" style="height: fit-content; position: sticky; top: 28px;">
     <h2>New scan</h2>
     <label for="targets">Targets (one per line, <code>host</code> or <code>host:port</code>)</label>
-    <textarea id="targets" placeholder="cybrium.ai&#10;example.com:443&#10;chase.com"></textarea>
+    <textarea id="targets" placeholder="cybrium.ai&#10;example.com:443"></textarea>
 
     <label for="timeout">Timeout (seconds)</label>
     <input id="timeout" type="number" value="30" min="1" max="120" />
@@ -153,26 +254,17 @@
     <button class="ghost"   id="clear">Clear results</button>
   </section>
 
-  <section class="panel" id="results">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <h2 style="margin:0;">Findings</h2>
-      <div id="exports" style="display:none; gap:6px;">
-        <button class="exportbtn" data-fmt="json">JSON</button>
-        <button class="exportbtn" data-fmt="jsonl">JSONL</button>
-        <button class="exportbtn" data-fmt="sarif">SARIF</button>
-        <button class="exportbtn" data-fmt="csv">CSV</button>
-        <button class="exportbtn" data-fmt="html">HTML</button>
-      </div>
-    </div>
-    <div id="tiles" class="tiles" style="display:none">
-      <div class="tile critical"><span class="n" id="t-c">0</span><span class="l">Critical</span></div>
-      <div class="tile high"><span class="n" id="t-h">0</span><span class="l">High</span></div>
-      <div class="tile medium"><span class="n" id="t-m">0</span><span class="l">Medium</span></div>
-      <div class="tile low"><span class="n" id="t-l">0</span><span class="l">Low</span></div>
-      <div class="tile info"><span class="n" id="t-i">0</span><span class="l">Info</span></div>
+  <section id="results">
+    <div class="exports-bar" id="exports-bar">
+      <span class="lbl">Export</span>
+      <button class="exportbtn" data-fmt="json"  disabled>JSON</button>
+      <button class="exportbtn" data-fmt="jsonl" disabled>JSONL</button>
+      <button class="exportbtn" data-fmt="sarif" disabled>SARIF</button>
+      <button class="exportbtn" data-fmt="csv"   disabled>CSV</button>
+      <button class="exportbtn" data-fmt="html"  disabled>HTML</button>
     </div>
     <div id="content">
-      <div class="empty">Submit one or more targets to run a posture probe.</div>
+      <div class="panel"><div class="empty">Submit one or more targets to run a posture probe.</div></div>
     </div>
   </section>
 </main>
@@ -183,8 +275,7 @@
 
 <script>
 const el = (id) => document.getElementById(id);
-const $tiles = el("tiles"), $content = el("content");
-const $run = el("run"), $clear = el("clear");
+const $content = el("content"), $run = el("run"), $clear = el("clear");
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 
 let allReports = [];
@@ -214,48 +305,278 @@ async function runScan() {
   }
 }
 
-function render() {
-  const findings = allReports.flatMap(r => r.findings);
-  const $exports = el("exports");
-  if (!findings.length && !allReports.length) {
-    $tiles.style.display = "none";
-    $exports.classList.remove("shown");
-    $content.innerHTML = `<div class="empty">No findings — every probe passed cleanly. ✓</div>`;
-    return;
-  }
-  $tiles.style.display = "grid";
-  if (allReports.length) $exports.classList.add("shown");
-  el("t-c").textContent = findings.filter(f => f.severity === "critical").length;
-  el("t-h").textContent = findings.filter(f => f.severity === "high").length;
-  el("t-m").textContent = findings.filter(f => f.severity === "medium").length;
-  el("t-l").textContent = findings.filter(f => f.severity === "low").length;
-  el("t-i").textContent = findings.filter(f => f.severity === "info").length;
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]); }
+function ynPill(v) { return v ? `<span class="pill yes">Yes</span>` : `<span class="pill no">No</span>`; }
+function naPill(v, neg) { if (v == null) return `<span class="pill na">n/a</span>`; return v ? `<span class="pill yes">${esc(v)}</span>` : `<span class="pill no">${neg||"No"}</span>`; }
 
-  findings.sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
+function gradeClass(g) {
+  if (!g) return "X";
+  if (g === "A+") return "Aplus";
+  if (g === "A-") return "Aminus";
+  return g.length === 1 ? g : "X";
+}
 
-  $content.innerHTML = `
+function barClass(score) {
+  if (score >= 80) return "";
+  if (score >= 50) return "w50";
+  if (score >= 30) return "w30";
+  return "w10";
+}
+
+function renderSummary(r) {
+  const g = r.grade || {};
+  const s = r.summary || {};
+  const grade = g.grade || "?";
+  const protocol = g.protocol_score ?? 0;
+  const keyx     = g.key_exchange_score ?? 0;
+  const cipher   = g.cipher_score ?? 0;
+  // Certificate axis: 100 if mozilla_trusted, else 50, else 0 — derived since we don't store one explicitly.
+  const trusted  = (r.certificate || {}).mozilla_trusted;
+  const certScore= trusted === true ? 100 : (trusted === false ? 30 : 0);
+  const verdictClass = s.passed === false ? (s.breach_indicators && s.breach_indicators.length ? "bad" : "warn") : "";
+  const breaches = (s.breach_indicators || []).length;
+  return `
+  <div class="panel">
+    <div class="report-host">SSL Report: ${esc(r.target)} ${r.ip ? `<span style="color:var(--muted); font-weight:400; font-size:14px;">(${esc(r.ip)})</span>` : ""}</div>
+    <div class="report-meta">Assessed at: ${new Date().toUTCString()} · ${r.elapsed_ms||0} ms · ${(r.findings||[]).length} finding(s)${breaches ? ` · ${breaches} active breach indicator(s)` : ""}</div>
+    <div class="summary-grid">
+      <div class="grade-box grade-${gradeClass(grade)}" title="Composite grade">${esc(grade)}</div>
+      <div class="axis-rows">
+        <div class="axis-row"><span class="label">Certificate</span>      <div class="bar-track"><div class="bar-fill ${barClass(certScore)}" style="width:${certScore}%"></div></div>      <span class="val">${certScore}</span></div>
+        <div class="axis-row"><span class="label">Protocol Support</span> <div class="bar-track"><div class="bar-fill ${barClass(protocol)}" style="width:${protocol}%"></div></div> <span class="val">${protocol}</span></div>
+        <div class="axis-row"><span class="label">Key Exchange</span>     <div class="bar-track"><div class="bar-fill ${barClass(keyx)}" style="width:${keyx}%"></div></div>     <span class="val">${keyx}</span></div>
+        <div class="axis-row"><span class="label">Cipher Strength</span>  <div class="bar-track"><div class="bar-fill ${barClass(cipher)}" style="width:${cipher}%"></div></div>  <span class="val">${cipher}</span></div>
+      </div>
+    </div>
+    ${s.verdict_line ? `<div class="verdict ${verdictClass}">${esc(s.verdict_line)}</div>` : ""}
+    ${(g.grade_caps || []).length ? `<div style="margin-top:10px"><h3>Grade caps</h3>${g.grade_caps.map(c => `<div style="font-size:12px; color:var(--muted); margin:3px 0;">• ${esc(c)}</div>`).join("")}</div>` : ""}
+    ${(g.grade_bonuses || []).length ? `<div style="margin-top:10px"><h3>Grade bonuses</h3>${g.grade_bonuses.map(b => `<div style="font-size:12px; color:var(--green); margin:3px 0;">+ ${esc(b)}</div>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+function renderCert(r) {
+  const c = r.certificate;
+  if (!c) return "";
+  const naf = c.not_after ? new Date(c.not_after).toUTCString() : "?";
+  const nbf = c.not_before ? new Date(c.not_before).toUTCString() : "?";
+  const ts = c.trust_stores || {};
+  const lifetimeDays = c.not_before && c.not_after ? Math.round((new Date(c.not_after) - new Date(c.not_before))/(1000*60*60*24)) : 0;
+  return `
+  <div class="panel">
+    <h2>Certificate #1: ${esc(c.key_algorithm||"?")} ${c.key_bits||0} bits (${esc(c.signature_algorithm||"?")})</h2>
+    <div class="kvgrid">
+      <div class="k">Subject</div>           <div class="v">${esc(c.subject)}</div>
+      <div class="k">Common names / SAN</div><div class="v">${(c.san||[]).map(esc).join(", ")}</div>
+      <div class="k">SHA-256 fingerprint</div><div class="v">${esc(c.sha256_fingerprint||"")}</div>
+      <div class="k">SPKI SHA-256</div>      <div class="v">${esc(c.spki_sha256||"")}</div>
+      <div class="k">Valid from</div>        <div class="v">${esc(nbf)}</div>
+      <div class="k">Valid until</div>       <div class="v ${c.days_remaining<30?'warn':''}${c.days_remaining<0?' bad':''}">${esc(naf)} (${c.days_remaining||0} days remaining, ${lifetimeDays} day lifetime)</div>
+      <div class="k">Key</div>               <div class="v">${esc(c.key_algorithm)} ${c.key_bits} bits${c.ec_curve?` (${esc(c.ec_curve)})`:""}</div>
+      <div class="k">Issuer</div>            <div class="v">${esc(c.issuer)}</div>
+      <div class="k">Signature algorithm</div><div class="v">${esc(c.signature_algorithm)}</div>
+      <div class="k">Extended Validation</div><div class="v">${ynPill(c.ev)}</div>
+      <div class="k">SCT count / operators</div><div class="v">${c.sct_count||0} SCT(s), ${c.sct_distinct_operators||0} distinct CT operator(s)</div>
+      <div class="k">OCSP Must-Staple</div>  <div class="v">${ynPill(c.must_staple)}</div>
+      <div class="k">OCSP stapling</div>     <div class="v">${ynPill(c.ocsp_stapled)}</div>
+      <div class="k">OCSP responder URL</div><div class="v">${esc(c.ocsp_responder_url||"—")}</div>
+      <div class="k">OCSP status</div>       <div class="v">${esc(c.ocsp_status||"—")}</div>
+      <div class="k">CRL distribution</div>  <div class="v">${(c.crl_distribution_points||[]).map(esc).join("<br>")||"—"}</div>
+      <div class="k">DNS CAA</div>           <div class="v ${(r.caa_records||[]).length?'good':'warn'}">${(r.caa_records||[]).length?(r.caa_records.map(esc).join("<br>")):"No CAA records published"}</div>
+      <div class="k">Chain length</div>      <div class="v">${c.chain_length||0} cert(s), ${c.chain_complete?'complete':'incomplete'}, ${c.chain_order_correct?'order ok':'order INCORRECT'}</div>
+      <div class="k">Mozilla trusted</div>   <div class="v ${c.mozilla_trusted?'good':'bad'}">${ynPill(c.mozilla_trusted)}${c.trust_reason?` — <span style="color:var(--muted)">${esc(c.trust_reason)}</span>`:""}</div>
+      <div class="k">Trusted by</div><div class="v">
+        <div class="trust-tabs">
+          <div class="trust-tab ${ts.mozilla?'ok':'bad'}">Mozilla ${ts.mozilla?'✓':'✗'}</div>
+          <div class="trust-tab ${ts.apple?'ok':'bad'}">Apple ${ts.apple?'✓':'✗'}</div>
+          <div class="trust-tab ${ts.android?'ok':'bad'}">Android ${ts.android?'✓':'✗'}</div>
+          <div class="trust-tab ${ts.java?'ok':'bad'}">Java ${ts.java?'✓':'✗'}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderConfig(r) {
+  const p = r.protocols || {};
+  const ke = r.key_exchange || {};
+  return `
+  <div class="panel">
+    <h2>Configuration</h2>
+    <h3>Protocols</h3>
+    <div class="kvgrid">
+      <div class="k">TLS 1.3</div><div class="v">${ynPill(p.tls13?.supported)}</div>
+      <div class="k">TLS 1.2</div><div class="v">${ynPill(p.tls12?.supported)}</div>
+      <div class="k">TLS 1.1</div><div class="v ${p.tls11?.supported?'bad':''}">${ynPill(p.tls11?.supported)}</div>
+      <div class="k">TLS 1.0</div><div class="v ${p.tls10?.supported?'bad':''}">${ynPill(p.tls10?.supported)}</div>
+      <div class="k">SSL 3</div>  <div class="v ${p.sslv3?.supported?'bad':''}">${ynPill(p.sslv3?.supported)}</div>
+      <div class="k">SSL 2</div>  <div class="v ${p.sslv2?.supported?'bad':''}">${ynPill(p.sslv2?.supported)}</div>
+      <div class="k">ALPN</div>   <div class="v">${esc(p.alpn||"—")}</div>
+      <div class="k">Key Exchange Group</div><div class="v">${esc(p.key_exchange_group||"—")}</div>
+      <div class="k">HTTP/3 advertised</div><div class="v">${ynPill(p.tls13?.http3_advertised)}</div>
+      <div class="k">ECH advertised</div>   <div class="v">${ynPill(p.tls13?.ech_advertised)}</div>
+      <div class="k">PQC supported</div>    <div class="v">${ynPill(p.pqc?.supported)}${p.pqc?.group?` (${esc(p.pqc.group)})`:""}</div>
+    </div>
+    ${renderCipherList("TLS 1.3 cipher suites", p.tls13?.ciphers)}
+    ${renderCipherList("TLS 1.2 cipher suites", p.tls12?.ciphers)}
+  </div>`;
+}
+
+function cipherBits(name) {
+  const n = name.toUpperCase();
+  if (n.includes("AES_256") || n.includes("AES256") || n.includes("CHACHA20")) return 256;
+  if (n.includes("AES_128") || n.includes("AES128")) return 128;
+  if (n.includes("3DES")) return 112;
+  if (n.includes("RC4")) return 128;
+  return 0;
+}
+
+function renderCipherList(label, list) {
+  if (!list || !list.length) return "";
+  return `<h3>${esc(label)}</h3><div class="cipher-list">${list.map(c => `
+    <div class="cipher-row">
+      <span class="name">${esc(c)}</span>
+      <span class="fs">${c.toUpperCase().includes("ECDHE") || c.toUpperCase().includes("TLS_AES") || c.toUpperCase().includes("TLS_CHACHA") ? "FS" : ""}</span>
+      <span class="bits">${cipherBits(c) || ""}</span>
+    </div>`).join("")}</div>`;
+}
+
+function renderProtocolDetails(r) {
+  const p = r.protocols || {};
+  const ext = r.extensions || {};
+  const headers = r.headers || {};
+  const has = (id) => (r.findings || []).some(f => f.id === id);
+  return `
+  <div class="panel">
+    <h2>Protocol Details</h2>
+    <div class="kvgrid">
+      <div class="k">Secure Renegotiation</div>          <div class="v">${ynPill(ext.renegotiation?.secure)}</div>
+      <div class="k">Client-Initiated Renegotiation</div><div class="v ${has("TLS-CLIENT-RENEG-ALLOWED")?'bad':''}">${ynPill(has("TLS-CLIENT-RENEG-ALLOWED"))}</div>
+      <div class="k">Insecure legacy renegotiation</div> <div class="v ${has("TLS-INSECURE-RENEG-LEGACY")?'bad':''}">${ynPill(has("TLS-INSECURE-RENEG-LEGACY"))}</div>
+      <div class="k">BEAST</div>                         <div class="v ${has("TLS-CBC-MAC-THEN-ENCRYPT")?'warn':''}">${has("TLS-CBC-MAC-THEN-ENCRYPT") ? `<span class="pill no">Eligible</span>` : `<span class="pill yes">Mitigated</span>`}</div>
+      <div class="k">POODLE (SSLv3)</div>                <div class="v">${p.sslv3?.supported ? `<span class="pill no">Vulnerable</span>` : `<span class="pill yes">No, SSLv3 not supported</span>`}</div>
+      <div class="k">Zombie POODLE / GOLDENDOODLE</div>  <div class="v ${has("TLS-GOLDENDOODLE-ACTIVE")?'bad':''}">${ynPill(!has("TLS-GOLDENDOODLE-ACTIVE"))}</div>
+      <div class="k">OpenSSL padding oracle (CVE-2016-2107)</div><div class="v ${has("TLS-OPENSSL-PADDING-ORACLE")?'bad':''}">${has("TLS-OPENSSL-PADDING-ORACLE") ? `<span class="pill no">Vulnerable</span>` : `<span class="pill yes">No</span>`}</div>
+      <div class="k">Downgrade attack prevention</div>   <div class="v">${r.fallback_scsv || `<span class="pill na">unknown</span>`}</div>
+      <div class="k">TLS compression (CRIME)</div>       <div class="v ${ext.compression?.offered?'bad':''}">${ynPill(ext.compression?.offered)}</div>
+      <div class="k">RC4 accepted</div>                  <div class="v ${has("TLS-RC4-CIPHER")?'bad':''}">${ynPill(has("TLS-RC4-CIPHER"))}</div>
+      <div class="k">3DES accepted (SWEET32)</div>       <div class="v ${has("TLS-3DES-CIPHER")?'bad':''}">${ynPill(has("TLS-3DES-CIPHER"))}</div>
+      <div class="k">Heartbeat extension</div>           <div class="v ${ext.heartbeat?.offered?'warn':''}">${ynPill(ext.heartbeat?.offered)}</div>
+      <div class="k">Heartbleed (CVE-2014-0160)</div>    <div class="v ${has("TLS-HEARTBLEED")?'bad':''}">${has("TLS-HEARTBLEED") ? `<span class="pill no">Vulnerable</span>` : `<span class="pill yes">No</span>`}</div>
+      <div class="k">Ticketbleed (CVE-2016-9244)</div>   <div class="v ${has("TLS-TICKETBLEED")?'bad':''}">${ynPill(!has("TLS-TICKETBLEED"))}</div>
+      <div class="k">CCS injection (CVE-2014-0224)</div> <div class="v ${has("TLS-CCS-INJECTION")?'bad':''}">${ynPill(!has("TLS-CCS-INJECTION"))}</div>
+      <div class="k">ROBOT</div>                         <div class="v ${has("TLS-ROBOT-VULNERABLE")?'bad':''}">${ynPill(!has("TLS-ROBOT-VULNERABLE"))}</div>
+      <div class="k">DROWN</div>                         <div class="v ${has("TLS-DROWN-VULNERABLE")?'bad':''}">${ynPill(!has("TLS-DROWN-VULNERABLE"))}</div>
+      <div class="k">Forward Secrecy</div>               <div class="v">${esc(r.forward_secrecy || "—")}</div>
+      <div class="k">Cipher preference</div>             <div class="v">${esc(r.cipher_preference || "—")}</div>
+      <div class="k">Session resumption (ticket)</div>   <div class="v">${ynPill(ext.session_resumption?.tls12_ticket || ext.session_ticket?.offered)}</div>
+      <div class="k">0-RTT enabled</div>                 <div class="v ${p.tls13?.zero_rtt_accepted?'warn':''}">${ynPill(p.tls13?.zero_rtt_accepted)}</div>
+      <div class="k">Extended Master Secret</div>        <div class="v ${has("TLS-NO-EXTENDED-MASTER-SECRET")?'bad':''}">${ynPill(!has("TLS-NO-EXTENDED-MASTER-SECRET"))}</div>
+      <div class="k">GREASE tolerant</div>               <div class="v ${has("TLS-GREASE-INTOLERANT")?'bad':''}">${ynPill(r.tolerates_grease)}</div>
+      <div class="k">HSTS</div>                          <div class="v">${headers.hsts?.present ? `<span class="pill yes">max-age=${headers.hsts.max_age}${headers.hsts.include_subdomains?'; includeSubDomains':''}${headers.hsts.preload?'; preload':''}</span>` : `<span class="pill no">Missing</span>`}</div>
+      <div class="k">HSTS preload list</div>             <div class="v">${ynPill(headers.hsts?.in_preload_list)}</div>
+      <div class="k">HPKP (deprecated)</div>             <div class="v">${ynPill(headers.hpkp?.present)}</div>
+      <div class="k">DNSSEC zone signed</div>            <div class="v">${ynPill(r.dnssec_signed)}</div>
+      <div class="k">DANE TLSA records</div>             <div class="v">${r.dane_tlsa_count || 0}</div>
+      <div class="k">HTTP→HTTPS redirect</div>           <div class="v ${has("HTTP-NO-REDIRECT-TO-HTTPS")?'bad':''}">${r.http_redirect?.tested ? (r.http_redirect.redirects_to_https ? `<span class="pill yes">Yes (${r.http_redirect.status_code})</span>` : `<span class="pill no">No (${r.http_redirect.status_code})</span>`) : `<span class="pill na">port 80 unreachable</span>`}</div>
+    </div>
+  </div>`;
+}
+
+function renderHandshakeSim(r) {
+  const sims = r.handshake_simulation || [];
+  if (!sims.length) return "";
+  return `
+  <div class="panel">
+    <h2>Handshake Simulation</h2>
     <table>
-      <thead><tr><th>Severity</th><th>Target</th><th>ID</th><th>Title</th><th>Evidence</th></tr></thead>
+      <thead><tr><th>Client</th><th>Protocol</th><th>Cipher</th><th>Group</th><th>FS</th></tr></thead>
+      <tbody>
+        ${sims.map(s => `
+          <tr>
+            <td><code>${esc(s.client_name||"?")}</code></td>
+            <td>${esc(s.negotiated_protocol||s.protocol||"—")}</td>
+            <td><code style="font-size:11px">${esc(s.cipher||"—")}</code></td>
+            <td>${esc(s.key_exchange_group||"—")}</td>
+            <td>${s.forward_secrecy ? `<span class="pill yes">FS</span>` : `<span class="pill na">—</span>`}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function renderFindings(r) {
+  const findings = (r.findings || []).slice().sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
+  if (!findings.length) return `<div class="panel"><h2>Findings</h2><div class="empty">No findings — clean scan ✓</div></div>`;
+  const counts = ["critical","high","medium","low","info"].map(sev => findings.filter(f => f.severity === sev).length);
+  return `
+  <div class="panel">
+    <h2>Findings</h2>
+    <div class="tiles">
+      <div class="tile critical"><span class="n">${counts[0]}</span><span class="l">Critical</span></div>
+      <div class="tile high"><span class="n">${counts[1]}</span><span class="l">High</span></div>
+      <div class="tile medium"><span class="n">${counts[2]}</span><span class="l">Medium</span></div>
+      <div class="tile low"><span class="n">${counts[3]}</span><span class="l">Low</span></div>
+      <div class="tile info"><span class="n">${counts[4]}</span><span class="l">Info</span></div>
+    </div>
+    <table>
+      <thead><tr><th>Sev</th><th>ID</th><th>Title / Evidence / Fix</th></tr></thead>
       <tbody>
         ${findings.map(f => `
           <tr>
             <td><span class="sev ${f.severity}">${f.severity}</span></td>
-            <td><span class="target-pill">${f.host}</span></td>
-            <td><code>${f.id}</code></td>
-            <td>${f.title}</td>
-            <td style="color: var(--muted); max-width: 320px;">${(f.evidence||"").slice(0, 80)}</td>
+            <td><code style="font-size:11px">${esc(f.id)}</code>${f.reference_url ? `<br><a href="${esc(f.reference_url)}" target="_blank" style="font-size:10px; color:var(--muted)">ref ↗</a>` : ""}</td>
+            <td>
+              <div style="color:var(--fg-bright); font-size:13px;">${esc(f.title)}</div>
+              <div style="color:var(--muted); font-size:12px; margin-top:3px;">${esc(f.evidence||"")}</div>
+              ${f.remediation ? `<div class="fix">Fix: ${esc(f.remediation)}</div>` : ""}
+            </td>
           </tr>`).join("")}
       </tbody>
     </table>
-  `;
+  </div>`;
+}
+
+function renderMisc(r) {
+  const t = r.timings_ms || {};
+  return `
+  <div class="panel">
+    <h2>Miscellaneous</h2>
+    <div class="kvgrid">
+      <div class="k">Test date</div>          <div class="v">${new Date().toUTCString()}</div>
+      <div class="k">Test duration</div>      <div class="v">${r.elapsed_ms||0} ms</div>
+      <div class="k">Connect time</div>       <div class="v">${t.connect||0} ms</div>
+      <div class="k">Server fingerprint</div> <div class="v">${esc(r.server_fingerprint?.banner || "—")}</div>
+      <div class="k">Server product</div>     <div class="v">${esc(r.headers?.server_product || r.headers?.server_header || "—")}</div>
+      <div class="k">Preload list refresh</div><div class="v">${esc(r.preload_list_refreshed_at||"—")}</div>
+    </div>
+  </div>`;
+}
+
+function render() {
+  const exportBtns = document.querySelectorAll(".exportbtn");
+  if (!allReports.length) {
+    exportBtns.forEach(b => b.disabled = true);
+    $content.innerHTML = `<div class="panel"><div class="empty">Submit one or more targets to run a posture probe.</div></div>`;
+    return;
+  }
+  exportBtns.forEach(b => b.disabled = false);
+  $content.innerHTML = allReports.map(r =>
+    renderSummary(r) +
+    renderCert(r) +
+    renderConfig(r) +
+    renderHandshakeSim(r) +
+    renderProtocolDetails(r) +
+    renderFindings(r) +
+    renderMisc(r)
+  ).join("");
 }
 
 $run.addEventListener("click", runScan);
 $clear.addEventListener("click", () => { allReports = []; render(); });
 
-// Export buttons — fetch the API, trigger a download with a sensible filename.
 document.querySelectorAll(".exportbtn").forEach(btn => {
   btn.addEventListener("click", async () => {
+    if (btn.disabled) return;
     const fmt = btn.dataset.fmt;
     try {
       const res = await fetch(`/api/export?format=${fmt}`);

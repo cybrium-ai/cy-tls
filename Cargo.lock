@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "cy-tls"
-version = "0.5.72"
+version = "0.5.73"
 dependencies = [
  "aes",
  "anyhow",
