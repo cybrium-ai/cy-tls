@@ -17,6 +17,7 @@ mod gui;
 mod mcp;
 mod output;
 mod preload;
+mod remediation;
 mod scan;
 
 use clap::Parser;

@@ -156,6 +156,7 @@ mod tests {
             host: "h".to_string(),
             evidence: "e".to_string(),
             controls: Vec::new(),
+            remediation: "",
         }
     }
 

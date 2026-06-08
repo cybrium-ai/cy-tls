@@ -36,6 +36,12 @@ pub struct Finding {
     pub title: &'static str,
     pub evidence: String,
     pub controls: Vec<&'static str>,
+    /// v0.5.60 — concrete remediation step. Auto-populated by `make()`
+    /// from the per-ID lookup table in `remediation.rs`. Empty when the
+    /// finding is purely informational or the title already says what
+    /// to do. Surfaces as the "how to fix" line in dashboards.
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub remediation: &'static str,
 }
 
 /// Catalog of every stable finding ID cy-tls will ever emit. Adding a
@@ -251,6 +257,7 @@ pub fn make(id: &'static str, host: impl Into<String>, evidence: impl Into<Strin
         title,
         evidence: evidence.into(),
         controls: crate::controls::for_id(id),
+        remediation: crate::remediation::for_id(id),
     }
 }
 
