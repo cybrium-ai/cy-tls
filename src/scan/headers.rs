@@ -69,6 +69,17 @@ pub struct HeaderInfo {
     /// user-controlled input alongside a secret. cy-tls only sees the
     /// transport surface; the reflection axis stays out-of-scope.
     pub http_compression: HttpCompression,
+    /// v0.5.45 — value of the Server response header. Surfaced raw
+    /// so dashboards can group by product family ("nginx", "Apache",
+    /// "envoy", "cloudflare"). Findings fire only when this string
+    /// contains a version-number pattern (slash + digits).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_header: Option<String>,
+    /// v0.5.45 — value of the X-Powered-By response header. Modern
+    /// frameworks default to disabling this; presence is itself a
+    /// posture signal regardless of value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x_powered_by: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -103,6 +114,26 @@ pub struct Hpkp {
 
 impl HeaderInfo {
     pub fn contribute_findings(&self, host: &str, findings: &mut Vec<Finding>) {
+        // v0.5.45 — Server / X-Powered-By disclosure. Checked BEFORE
+        // the HSTS-MISSING short-circuit because header leaks are
+        // independent of HSTS posture (and historically the most
+        // version-leaky sites are also the ones with no HSTS).
+        if let Some(v) = self.server_header.as_deref() {
+            if server_header_leaks_version(v) {
+                findings.push(make(
+                    "HTTP-SERVER-VERSION-LEAK",
+                    host,
+                    format!("Server header discloses product+version: {v}"),
+                ));
+            }
+        }
+        if let Some(v) = self.x_powered_by.as_deref() {
+            findings.push(make(
+                "HTTP-X-POWERED-BY-PRESENT",
+                host,
+                format!("X-Powered-By header present: {v}"),
+            ));
+        }
         if !self.hsts.present {
             findings.push(make(
                 "HSTS-MISSING",
@@ -268,5 +299,62 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         }
     }
 
+    // v0.5.45 — Server + X-Powered-By disclosure capture. Findings
+    // are emitted in contribute_findings(); here we just record.
+    if let Some(v) = response.header("server") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.server_header = Some(trimmed.to_string());
+        }
+    }
+    if let Some(v) = response.header("x-powered-by") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.x_powered_by = Some(trimmed.to_string());
+        }
+    }
+
     Ok(info)
+}
+
+/// v0.5.45 — does the Server header value contain a version number?
+/// Pattern: `<product>/<digits>[.digits…]`. Matches `nginx/1.18.0`,
+/// `Apache/2.4.7`, `Microsoft-IIS/10.0` — but NOT `nginx`,
+/// `cloudflare`, `envoy`, where the operator has stripped the version.
+pub(crate) fn server_header_leaks_version(value: &str) -> bool {
+    let mut chars = value.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' {
+            // The next non-space char after the slash must be a digit.
+            while let Some(&nx) = chars.peek() {
+                if nx == ' ' {
+                    chars.next();
+                    continue;
+                }
+                return nx.is_ascii_digit();
+            }
+            return false;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::server_header_leaks_version;
+
+    #[test]
+    fn version_leak_detection() {
+        assert!(server_header_leaks_version("nginx/1.18.0"));
+        assert!(server_header_leaks_version("Apache/2.4.7 (Ubuntu)"));
+        assert!(server_header_leaks_version("Microsoft-IIS/10.0"));
+        assert!(server_header_leaks_version("openresty/ 1.21"));
+        assert!(!server_header_leaks_version("nginx"));
+        assert!(!server_header_leaks_version("cloudflare"));
+        assert!(!server_header_leaks_version("envoy"));
+        // Slash without trailing digit — Caddy at one point used 'Caddy'.
+        assert!(!server_header_leaks_version("Caddy"));
+        // Slash with no digits after.
+        assert!(!server_header_leaks_version("server/(stripped)"));
+    }
 }

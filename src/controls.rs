@@ -211,6 +211,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── DNS SOA serial freshness (v0.5.44) ──────────────────────
         "DNS-SOA-STALE" => vec!["RFC 1912 §2.2", "NIST 800-53 CM-2"],
 
+        // ── HTTP product disclosure (v0.5.45) ───────────────────────
+        "HTTP-SERVER-VERSION-LEAK" | "HTTP-X-POWERED-BY-PRESENT" => vec![
+            "NIST 800-53 SI-11",
+            "OWASP ASVS 14.3.2",
+            "CIS Apache Benchmark §3.4 / Nginx Benchmark §2.5.1",
+            "PCI DSS 6.5.5",
+        ],
+
         _ => vec![],
     }
 }

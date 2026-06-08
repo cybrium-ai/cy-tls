@@ -187,6 +187,10 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── DNS SOA serial freshness (v0.5.44) ──────────────────────────
     ("DNS-SOA-STALE", Severity::Info, "SOA serial uses RFC 1912 YYYYMMDDNN convention and the embedded date is > 365 days old — zone hasn't been updated in over a year. Forgotten zones, orphaned subsidiaries, and abandoned dynamic-DNS targets show up here"),
+
+    // ── HTTP product disclosure (v0.5.45) ───────────────────────────
+    ("HTTP-SERVER-VERSION-LEAK",   Severity::Low, "Server response header discloses product + version (e.g. nginx/1.18.0, Apache/2.4.7). Feeds vulnerability inventories without effort — production deployments should strip the version (server_tokens off / ServerTokens Prod / equivalent)"),
+    ("HTTP-X-POWERED-BY-PRESENT",  Severity::Low, "X-Powered-By response header present. Modern frameworks default to disabling it; presence is a posture signal regardless of value (the header serves no operational purpose and leaks the framework + sometimes version)"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -253,10 +257,11 @@ mod tests {
         // TLS-CERT-CHAIN-MISORDERED. v0.5.31 added
         // TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE. v0.5.38 added
         // TLS-OCSP-URL-HTTPS-SCHEME.
-        // v0.5.44 added DNS-SOA-STALE.
+        // v0.5.44 added DNS-SOA-STALE. v0.5.45 added
+        // HTTP-SERVER-VERSION-LEAK + HTTP-X-POWERED-BY-PRESENT.
         assert_eq!(
             FINDING_CATALOG.len(),
-            71,
+            73,
             "FINDING_CATALOG size drifted from spec"
         );
     }
