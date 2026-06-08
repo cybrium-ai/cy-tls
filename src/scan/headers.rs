@@ -92,6 +92,12 @@ pub struct HeaderInfo {
     /// state to the next requester.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<String>,
+    /// v0.5.49 — value of the `Allow` response header from an OPTIONS
+    /// probe against `/`. Captures which HTTP methods the server
+    /// advertises as supported. Used to detect HTTP-TRACE-ENABLED
+    /// (Cross-Site Tracing / XST prerequisite).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_methods: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -195,6 +201,20 @@ impl HeaderInfo {
                 host,
                 "Response sets cookies but has no Cache-Control header — intermediate caches may store the response (including the Set-Cookie line) and serve it to other clients",
             ));
+        }
+        // v0.5.49 — TRACE method (XST surface). Parse comma-separated
+        // Allow header, case-insensitive match on TRACE.
+        if let Some(allow) = self.allow_methods.as_deref() {
+            let has_trace = allow
+                .split(',')
+                .any(|m| m.trim().eq_ignore_ascii_case("TRACE"));
+            if has_trace {
+                findings.push(make(
+                    "HTTP-TRACE-ENABLED",
+                    host,
+                    format!("OPTIONS response Allow header lists TRACE: {allow} — Cross-Site Tracing (XST) prerequisite. TraceMethod off (Apache) / proxy_method_filter (nginx) / similar should be set"),
+                ));
+            }
         }
         if !self.hsts.present {
             findings.push(make(
@@ -388,6 +408,26 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             info.cache_control = Some(trimmed.to_string());
+        }
+    }
+
+    // v0.5.49 — OPTIONS probe to detect TRACE method (XST surface).
+    // Second request, same agent. We accept any 2xx / 4xx response —
+    // 4xx is normal when the server returns "OPTIONS not allowed" but
+    // includes an Allow: header anyway. Network failure → silent skip.
+    if let Ok(opts_resp) = agent.request("OPTIONS", &url).call() {
+        if let Some(allow) = opts_resp.header("allow") {
+            let trimmed = allow.trim();
+            if !trimmed.is_empty() {
+                info.allow_methods = Some(trimmed.to_string());
+            }
+        }
+    } else if let Err(ureq::Error::Status(_, opts_resp)) = agent.request("OPTIONS", &url).call() {
+        if let Some(allow) = opts_resp.header("allow") {
+            let trimmed = allow.trim();
+            if !trimmed.is_empty() {
+                info.allow_methods = Some(trimmed.to_string());
+            }
         }
     }
 

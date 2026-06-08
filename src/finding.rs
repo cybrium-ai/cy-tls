@@ -203,6 +203,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Shared-infra cert (v0.5.48) ─────────────────────────────────
     ("TLS-CERT-SHARED-INFRA-CERT", Severity::Info, "Leaf cert SAN count exceeds 100 — the Cloudflare / Fastly / SaaS-edge multi-tenant cert pattern. Not a vulnerability; informational data point for compliance scoping and third-party-keypair ownership review"),
+
+    // ── HTTP TRACE / XST (v0.5.49) ──────────────────────────────────
+    ("HTTP-TRACE-ENABLED", Severity::Medium, "Server's Allow response header (OPTIONS /) lists TRACE — Cross-Site Tracing prerequisite. TRACE echoes the request including any client-sent headers, which combined with an XSS or browser bug becomes a credential-exfil channel"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -275,9 +278,10 @@ mod tests {
         // + HTTP-COOKIE-NO-SAMESITE + HTTP-CACHE-CONTROL-MISSING.
         // v0.5.47 added HTTP-NO-REDIRECT-TO-HTTPS.
         // v0.5.48 added TLS-CERT-SHARED-INFRA-CERT.
+        // v0.5.49 added HTTP-TRACE-ENABLED.
         assert_eq!(
             FINDING_CATALOG.len(),
-            79,
+            80,
             "FINDING_CATALOG size drifted from spec"
         );
     }

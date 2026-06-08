@@ -255,6 +255,15 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // posture context for third-party-key reviews.
         "TLS-CERT-SHARED-INFRA-CERT" => vec![],
 
+        // ── HTTP TRACE / XST (v0.5.49) ──────────────────────────────
+        "HTTP-TRACE-ENABLED" => vec![
+            "OWASP ASVS 14.4.2",
+            "PCI DSS 4.0 §6.2.4",
+            "CIS Apache Benchmark §5.5",
+            "CIS Nginx Benchmark §2.3.4",
+            "CVE-2003-0825",
+        ],
+
         _ => vec![],
     }
 }
