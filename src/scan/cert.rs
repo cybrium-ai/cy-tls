@@ -108,6 +108,12 @@ pub struct CertificateInfo {
     /// pinned. None when no caIssuers URL was published.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aia_ca_issuers_reachable: Option<bool>,
+    /// v0.5.42 — SHA-256 hex digest of the leaf cert's
+    /// SubjectPublicKeyInfo (DER-encoded). This is the canonical
+    /// public-key pin format used by HPKP / mobile cert pinning.
+    /// Operators track this across renewals to detect unexpected key
+    /// rotation (a rotation requires reissuing pins to clients).
+    pub spki_sha256: String,
 }
 
 impl CertificateInfo {
@@ -475,6 +481,7 @@ fn parse_leaf(
     let crl_distribution_points = extract_crl_distribution_points(&cert);
     let serial_entropy_bits = serial_entropy_bits(tbs.raw_serial());
     let basic_constraints_ca = basic_constraints_ca_bit(&cert);
+    let spki_sha256 = spki_sha256_hex(&cert);
     let has_authority_key_identifier = has_aki_extension(&cert);
     let has_subject_key_identifier = has_ski_extension(&cert);
 
@@ -513,6 +520,7 @@ fn parse_leaf(
         chain_order_correct: true,
         aia_ca_issuers_url,
         aia_ca_issuers_reachable: None,
+        spki_sha256,
         ocsp_stapled,
         ocsp_status,
     })
@@ -690,6 +698,18 @@ fn has_extended_key_usage_server_auth(cert: &X509Certificate) -> bool {
     // constraints + key usage. We treat absence as "OK" rather than
     // emit a false positive on legacy chains.
     true
+}
+
+/// Compute SHA-256 of the cert's SubjectPublicKeyInfo (the entire
+/// DER-encoded SEQUENCE — AlgorithmIdentifier + BIT STRING). This
+/// hex digest is the canonical public-key pin format used by HPKP
+/// (RFC 7469) and mobile cert-pinning libraries.
+fn spki_sha256_hex(cert: &X509Certificate) -> String {
+    use sha2::{Digest, Sha256};
+    let der = cert.tbs_certificate.subject_pki.raw;
+    let mut h = Sha256::new();
+    h.update(der);
+    hex::encode(h.finalize())
 }
 
 /// True when the cert carries an AuthorityKeyIdentifier extension
