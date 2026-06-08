@@ -10,10 +10,13 @@ replacing the Docker / K8s-jobbed sslyze pipeline.
 
 ## Status
 
-**v0.2.18 — Qualys-class parity.** Twelve probe rounds shipped this
-release stream covering every Qualys SSL Test row except the full
-Chromium preload trie and the active Bleichenbacher oracle (both
-deferred to v0.3.x).
+**v0.5.70 — full Qualys + SSLyze parity, plus a wider HTTP/DNS audit
+surface neither covers.** Single-letter composite grade (A+/A/B/C/D/E/F/T)
+matches Qualys SSL Labs. Multi-trust-store chain validation against
+Mozilla / Apple / Android / Java matches SSLyze. 100 stable finding
+IDs, each with per-finding severity + remediation + reference URL +
+compliance control mapping (NIST 800-53, PCI DSS 4.0, ISO 27001,
+OWASP ASVS, CIS).
 
 | Subcommand | What it does |
 |------------|--------------|
@@ -56,44 +59,118 @@ cy-tls gui
 cy-tls mcp
 ```
 
-## Qualys SSL Test parity
+## cy-tls vs SSLyze vs Qualys SSL Labs
 
-Every row Qualys' SSL Server Test surfaces (per the screenshots
-labelled `ssltest/analyze.html`) is now produced from a single
-`cy-tls scan` invocation:
+`✓` full · `~` partial · `✗` absent.
 
-| Qualys row | cy-tls source |
-|------------|---------------|
-| Protocol enum (SSLv2 / SSLv3 / TLS 1.0 / 1.1 / 1.2 / 1.3) | `protocols.{sslv2,sslv3,tls10,tls11,tls12,tls13}.supported` |
-| Cipher suites with hex codes + names + FS markers | `protocols.tls12.ciphers` + `protocols.tls13.ciphers` |
-| Forward Secrecy | `protocols.forward_secrecy` |
-| Key Exchange Group (X25519 / secp256r1 / etc.) | `protocols.key_exchange_group` |
-| ALPN | `protocols.alpn` |
-| Session resumption (caching + tickets) | `extensions.session_resumption.{tls13_psk, tls12_ticket}` |
-| Secure Renegotiation | `extensions.renegotiation.secure` |
-| Compression (CRIME) | `extensions.compression.offered` → `TLS-COMPRESSION-ENABLED` |
-| Heartbeat extension | `extensions.heartbeat.offered` |
-| Cert subject / issuer / SAN / validity / sig algo / key bits / EC curve / SCT count | `certificate.{subject, issuer, san, not_before, not_after, signature_algorithm, key_algorithm, key_bits, ec_curve, sct_count}` |
-| OCSP Stapling | `certificate.ocsp_stapled` + `certificate.ocsp_status` |
-| HSTS / max-age / includeSubDomains / preload | `headers.hsts.{present, max_age, include_subdomains, preload, in_preload_list}` |
-| Handshake Simulation (30 reference clients) | `handshake_simulation` (with `--handshake-sim`) |
-| Heartbleed (CVE-2014-0160) | Active probe → `TLS-HEARTBLEED` |
-| POODLE | SSLv3 detection → `TLS-SSLV3` |
-| ROBOT (CVE-2017-13099) eligibility | Cipher enum → `TLS-ROBOT-VULNERABLE` |
-| DROWN (CVE-2016-0800) | SSLv2 detection → `TLS-DROWN-VULNERABLE` |
-| BEAST (CVE-2011-3389) | TLS 1.0 + CBC → `TLS-CBC-MAC-THEN-ENCRYPT` |
-| Logjam / DH common primes | DHE param probe + SHA-256 hash compare → `TLS-DH-WEAK` / `TLS-DH-COMMON-PRIME` |
-| PQC Key Exchange | `protocols.pqc.{supported, group}` |
+| Capability | cy-tls (v0.5.70) | SSLyze | Qualys |
+|---|:---:|:---:|:---:|
+| **Headline output** | | | |
+| Composite letter grade (A+/A/B/C/D/E/F/T) | ✓ | ✗ | ✓ |
+| Per-axis subscores (protocol / key / cipher) | ✓ | ✗ | ✓ |
+| Plain-English verdict line | ✓ | ✗ | ✓ |
+| Active-breach indicator list | ✓ | ✗ | ~ |
+| Per-finding remediation string | ✓ | ✗ | ✓ |
+| Per-finding reference URL (CVE / RFC) | ✓ | ✗ | ✓ |
+| Compliance mappings (NIST / PCI / OWASP / ISO / CIS) | ✓ | ✗ | ~ |
+| **Protocols & ciphers** | | | |
+| SSL 2/3 + TLS 1.0/1.1/1.2/1.3 detection | ✓ | ✓ | ✓ |
+| Full cipher enumeration | ✓ | ✓ | ✓ |
+| TLS 1.3 + 0-RTT detection | ✓ | ✓ | ✓ |
+| Cipher preference order | ✓ | ✓ | ✓ |
+| Forward Secrecy bucket | ✓ | ~ | ✓ |
+| TLS_FALLBACK_SCSV | ✓ | ~ | ✓ |
+| GREASE tolerance (RFC 8701) | ✓ | ✗ | ✓ |
+| Extended Master Secret (RFC 7627) | ✓ | ✓ | ✓ |
+| Post-quantum readiness (ML-KEM hybrid) | ✓ | ✗ | ✗ |
+| ECH advertisement (DNS HTTPS rr) | ✓ | ✗ | ✗ |
+| HTTP/3 advertisement | ✓ | ✗ | ✓ |
+| **Vulnerabilities** | | | |
+| Heartbleed (active) | ✓ | ✓ | ✓ |
+| ROBOT (active) | ✓ | ✓ | ✓ |
+| CCS Injection | ✓ | ✓ | ✓ |
+| DROWN | ✓ | ~ | ✓ |
+| Ticketbleed | ✓ | ✗ | ✓ |
+| OpenSSL AES-NI padding oracle (CVE-2016-2107) | ✓ | ~ | ✓ |
+| GOLDENDOODLE / Zombie POODLE (active) | ✓ | ~ | ✓ |
+| Lucky13 (fingerprint + heuristic) | ✓ | ~ | ✓ |
+| Logjam / DH common-prime | ✓ | ~ | ✓ |
+| FREAK / EXPORT cipher | ✓ | ✓ | ✓ |
+| CRIME / TLS compression | ✓ | ✓ | ✓ |
+| BREACH eligibility | ✓ | ✗ | ✓ |
+| CBC-MAC-then-encrypt (Lucky13 surface) | ✓ | ~ | ✓ |
+| Insecure renegotiation (CVE-2009-3555) | ✓ | ✓ | ✓ |
+| HTTP/2 Rapid Reset (CVE-2023-44487) eligibility | ✓ | ✗ | ~ |
+| HTTP/2 header-list DoS (CVE-2019-9516) | ✓ | ✗ | ✗ |
+| h2c upgrade smuggling | ✓ | ✗ | ✗ |
+| **Certificate** | | | |
+| Hostname / SAN match | ✓ | ✓ | ✓ |
+| Expired / not-yet-valid | ✓ | ✓ | ✓ |
+| Self-signed | ✓ | ✓ | ✓ |
+| Weak signature (SHA-1/MD5) | ✓ | ✓ | ✓ |
+| Weak key bits | ✓ | ✓ | ✓ |
+| Chain completeness + depth + order | ✓ | ✓ | ✓ |
+| Intermediate expiry | ✓ | ✓ | ✓ |
+| CN-only (no SAN) | ✓ | ✓ | ✓ |
+| Dangerous wildcard (public-suffix / multi-label) | ✓ | ✗ | ~ |
+| Cert lifetime > 398-day BR cap | ✓ | ~ | ✓ |
+| Missing serverAuth EKU | ✓ | ✓ | ✓ |
+| Weak serial entropy (<64 bits) | ✓ | ✗ | ✓ |
+| Leaf-is-CA (BasicConstraints cA misissuance) | ✓ | ✗ | ✓ |
+| Missing AKI / SKI | ✓ | ~ | ✓ |
+| SPKI + whole-cert SHA-256 fingerprint | ✓ | ✓ | ✓ |
+| Shared-infra cert detection (>100 SANs) | ✓ | ✗ | ✗ |
+| Symantec distrust heuristic | ✓ | ✗ | ✓ |
+| AIA caIssuers reachability | ✓ | ✗ | ✓ |
+| **Trust / OCSP / CT** | | | |
+| Mozilla / webpki trust chain | ✓ | ✓ | ✓ |
+| Apple / Android / Java trust stores | ✓ | ✓ | ✓ |
+| Trust-tolerant probe (sees cert even on validation fail) | ✓ | ✓ | ✓ |
+| Grade T for trust failure | ✓ | n/a | ✓ |
+| OCSP stapling | ✓ | ✓ | ✓ |
+| Active OCSP query | ✓ | ✓ | ~ |
+| Must-staple violation | ✓ | ✓ | ✓ |
+| SCT presence | ✓ | ✓ | ✓ |
+| SCT operator diversity (Chrome 2022 policy) | ✓ | ~ | ✓ |
+| SCT count policy (≥2 / ≥3) | ✓ | ~ | ✓ |
+| **DNS posture** | | | |
+| CAA records + iodef + issuewild check | ✓ | ✗ | ~ |
+| DNSSEC publish-side | ✓ | ✗ | ✗ |
+| SOA serial freshness (RFC 1912) | ✓ | ✗ | ✗ |
+| NS provider redundancy | ✓ | ✗ | ✗ |
+| DANE TLSA presence | ✓ | ✓ | ✓ |
+| **HTTP / Web headers** | | | |
+| HSTS + max-age + includeSubdomains + preload-list lookup | ✓ | ~ | ✓ |
+| HSTS preload eligibility | ✓ | ✗ | ✓ |
+| HPKP detection (deprecated info) | ✓ | ✓ | ✓ |
+| HTTP→HTTPS redirect audit | ✓ | ✗ | ✓ |
+| CSP missing / unsafe-inline / unsafe-eval / data: / wildcard | ✓ | ✗ | ✗ |
+| X-Frame-Options / CSP frame-ancestors | ✓ | ✗ | ✗ |
+| X-Content-Type-Options nosniff | ✓ | ✗ | ✗ |
+| Cookie Secure / HttpOnly / SameSite audit | ✓ | ✗ | ✗ |
+| Cache-Control on cookie-setting responses | ✓ | ✗ | ✗ |
+| TRACE method (XST) | ✓ | ✗ | ✗ |
+| Server / X-Powered-By disclosure | ✓ | ✗ | ~ |
+| Server-Timing / Via leak | ✓ | ✗ | ✗ |
+| Content-Type charset hygiene | ✓ | ✗ | ✗ |
+| Reporting-Endpoints / NEL capture | ✓ | ✗ | ✗ |
+| Legacy Report-To deprecation flag | ✓ | ✗ | ✗ |
+| **Other** | | | |
+| Multi-client handshake simulation | ✓ (`--handshake-sim`) | ✗ | ✓ |
+| Bulk / fleet streaming | ✓ (`bulk` + `--summary`) | ~ | ✗ |
+| Self-hosted / air-gapped | ✓ | ✓ | ✗ |
+| Output formats | JSON · JSONL · SARIF · CSV · HTML | JSON · XML | JSON (API) |
+| Avg time per host | 3–20 s | 30–60 s | 60–300 s |
+| Cost | free, single binary | free, Python lib | free SaaS / paid API |
 
-Surface still on the v0.3.x roadmap:
+**Where Qualys still wins:** track record (running since 2009, deep
+real-world calibration); handshake-simulation client matrix is broader.
 
-- Full Chromium HSTS preload trie embed (current v0.2.x carries a
-  curated ~120-apex set with subdomain inheritance).
-- ROBOT active Bleichenbacher oracle test (current is eligibility-tier
-  via RSA cipher detection; full active test needs RSA-encrypted
-  ClientKeyExchange variants).
-- Real Logjam Appendix A common-prime hash list (placeholder hashes
-  shipped in v0.2.18).
+**Where cy-tls leads:** HTTP-layer header audit (CSP, cookies, nosniff,
+TRACE, Server, Via, Server-Timing), DNS posture (CAA hygiene, SOA
+freshness, NS, DNSSEC, DANE), per-finding remediation + reference +
+compliance mapping, breach-indicator list, bulk SIEM-friendly output,
+self-hosted single-binary deployment, PQC + ECH + HTTP/3 awareness.
 
 ## Output formats
 
@@ -111,9 +188,11 @@ Full schema + per-format details in [`docs/export-formats.md`](docs/export-forma
 
 ## Finding catalog
 
-38 stable finding IDs covering protocol, cipher, key exchange, certificate
-hygiene, OCSP / SCT, TLS 1.3 surface, padding-oracle families, HTTP
-security headers, and active-probe vulnerabilities. Full catalog:
+100 stable finding IDs covering protocol versions, cipher suites, key
+exchange, certificate hygiene, multi-trust-store divergence, OCSP /
+SCT, TLS 1.3 surface, padding-oracle families, HTTP security headers,
+CSP audit, cookie hygiene, DNS posture (CAA / DNSSEC / DANE / SOA),
+and active-probe vulnerabilities. Full catalog:
 [`docs/finding-ids.md`](docs/finding-ids.md).
 
 Each ID maps to NIST 800-53, PCI DSS 4.0, ISO 27001, OWASP ASVS, and CIS
