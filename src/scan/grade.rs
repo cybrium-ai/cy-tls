@@ -275,6 +275,37 @@ pub fn compute(
         }
     }
 
+    // v0.5.67 — Grade T override. When the chain fails Mozilla
+    // trust-store validation, Qualys SSL Labs surfaces "T" as the
+    // headline letter regardless of cipher / protocol posture (the
+    // browser is going to reject the connection — every other
+    // strength dimension is irrelevant). We replicate that. We
+    // PREFER the more-specific letter (F + named breach) when one of
+    // the standard cert breaches already explains the failure; T
+    // only fires when mozilla_trusted is false AND none of those
+    // primary cert findings fired.
+    if let Some(c) = certificate {
+        if !c.mozilla_trusted && !hard_fail && letter != "F" {
+            let trust_explained = findings.iter().any(|f| {
+                matches!(
+                    f.id,
+                    "TLS-CERT-EXPIRED"
+                        | "TLS-CERT-SELF-SIGNED"
+                        | "TLS-CERT-HOSTNAME-MISMATCH"
+                        | "TLS-CERT-INTERMEDIATE-EXPIRED"
+                        | "TLS-CERT-NOT-YET-VALID"
+                )
+            });
+            if !trust_explained {
+                letter = "T".into();
+                caps.push(
+                    "Chain fails Mozilla trust-store validation — grade overridden to T (trust)"
+                        .into(),
+                );
+            }
+        }
+    }
+
     GradeReport {
         grade: letter,
         score,

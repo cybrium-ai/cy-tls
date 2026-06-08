@@ -108,6 +108,10 @@ fn build_verdict_line(
     } else {
         grade.grade.as_str()
     };
+    if grade_str == "T" {
+        return "Grade T — chain fails trust-store validation; browsers will reject the connection"
+            .into();
+    }
     if !breaches.is_empty() {
         let primary = breaches[0]
             .trim_start_matches("TLS-")
