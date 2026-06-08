@@ -241,6 +241,15 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             vec!["OWASP ASVS 8.2.1", "NIST 800-53 SC-28", "RFC 7234 §5.2.2.6"]
         }
 
+        // ── HTTP→HTTPS redirect (v0.5.47) ───────────────────────────
+        "HTTP-NO-REDIRECT-TO-HTTPS" => vec![
+            "PCI DSS 4.0 §4.2.1",
+            "NIST 800-53 SC-8",
+            "NIST 800-53 SC-23",
+            "OWASP ASVS 9.1.1",
+            "ASV Program Guide §6.1 Table 1 — Insecure communications",
+        ],
+
         _ => vec![],
     }
 }

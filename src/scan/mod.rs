@@ -20,6 +20,7 @@ mod handshake_sim;
 mod headers;
 mod http2_posture;
 mod http2_rapid_reset;
+mod http_redirect;
 mod legacy_proto;
 mod ocsp;
 mod ocsp_query;
@@ -111,6 +112,10 @@ pub struct ScanReport {
     /// doesn't validate the parent-DS chain end-to-end (that needs a
     /// DNSSEC-validating resolver, out of scope for cy-tls).
     pub dnssec_signed: bool,
+    /// v0.5.47 — HTTP→HTTPS redirect audit. Probes port 80 with
+    /// redirects disabled. Empty (tested=false) when port 80 isn't
+    /// reachable at all — that's the best posture.
+    pub http_redirect: http_redirect::HttpRedirect,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -854,6 +859,36 @@ async fn scan_one(
         dns_soa::lookup_dnssec(host_str, timeout).await
     };
 
+    // v0.5.47 — HTTP→HTTPS redirect audit on port 80.
+    let http_redirect_result = {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        let host_owned = host_str.to_string();
+        tokio::task::spawn_blocking(move || http_redirect::probe(&host_owned, timeout))
+            .await
+            .unwrap_or_default()
+    };
+    if http_redirect_result.tested {
+        let s = http_redirect_result.status_code;
+        let loc = http_redirect_result.location.as_deref().unwrap_or("(none)");
+        // 2xx on port 80 → serving cleartext content directly. 3xx with
+        // a non-https Location → redirecting in a cycle or to plain http.
+        // Both are PCI-failing.
+        let cleartext_serve = (200..300).contains(&s);
+        let bad_3xx = (300..400).contains(&s) && !http_redirect_result.redirects_to_https;
+        if cleartext_serve || bad_3xx {
+            findings.push(crate::finding::make(
+                "HTTP-NO-REDIRECT-TO-HTTPS",
+                target,
+                format!(
+                    "http://{} returned status {} Location={} — clear-text channel is not being upgraded to HTTPS",
+                    target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target),
+                    s,
+                    loc
+                ),
+            ));
+        }
+    }
+
     // v0.5.44 — DNS-SOA-STALE: when the SOA serial uses the RFC 1912
     // YYYYMMDDNN convention AND the embedded date is > 365 days old,
     // the zone has stagnated. Strong operational signal — forgotten
@@ -897,6 +932,7 @@ async fn scan_one(
         dns_soa,
         dns_ns,
         dnssec_signed,
+        http_redirect: http_redirect_result,
     })
 }
 
@@ -956,6 +992,7 @@ fn stub_report(
         dns_soa: None,
         dns_ns: Vec::new(),
         dnssec_signed: false,
+        http_redirect: http_redirect::HttpRedirect::default(),
     }
 }
 

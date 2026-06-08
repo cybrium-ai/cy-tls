@@ -197,6 +197,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     ("HTTP-COOKIE-NO-HTTPONLY",     Severity::Medium, "Set-Cookie line lacks the HttpOnly attribute — cookie is readable from JavaScript via document.cookie, expanding the impact of any XSS to full session-token theft"),
     ("HTTP-COOKIE-NO-SAMESITE",     Severity::Low,    "Set-Cookie line has no SameSite attribute — cross-site CSRF protection depends on the browser's default (Chrome=Lax since 80, Safari historically=None)"),
     ("HTTP-CACHE-CONTROL-MISSING",  Severity::Low,    "Response sets cookies but has no Cache-Control header — middlebox / reverse-proxy caches may store the response (including the Set-Cookie line) and serve it to other clients"),
+
+    // ── HTTP→HTTPS redirect (v0.5.47) ───────────────────────────────
+    ("HTTP-NO-REDIRECT-TO-HTTPS", Severity::High, "Port 80 either serves content directly (2xx response) or redirects somewhere other than https://. PCI DSS 4.0 §4.2.1 requires migration of all clear-text channels — listeners on 80 must return a 301/308 to https:// or refuse the connection entirely"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -267,9 +270,10 @@ mod tests {
         // HTTP-SERVER-VERSION-LEAK + HTTP-X-POWERED-BY-PRESENT.
         // v0.5.46 added HTTP-COOKIE-NO-SECURE + HTTP-COOKIE-NO-HTTPONLY
         // + HTTP-COOKIE-NO-SAMESITE + HTTP-CACHE-CONTROL-MISSING.
+        // v0.5.47 added HTTP-NO-REDIRECT-TO-HTTPS.
         assert_eq!(
             FINDING_CATALOG.len(),
-            77,
+            78,
             "FINDING_CATALOG size drifted from spec"
         );
     }
