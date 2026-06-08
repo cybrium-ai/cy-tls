@@ -62,6 +62,32 @@ fn rname_to_email(rname: &str) -> String {
     }
 }
 
+/// v0.5.41 — true when the target zone has a published DNSKEY record.
+/// Publishing DNSKEY is the prerequisite for DNSSEC signing — this
+/// detects the publish side without validating the parent-DS chain
+/// (chain validation needs a DNSSEC-validating resolver, out of
+/// scope for a single-binary scanner). False when DNSKEY query
+/// fails or no DNSKEY exists.
+///
+/// hickory's DNSSEC RData variant is gated behind the `__dnssec`
+/// feature, so we don't match the RData enum directly. We just
+/// inspect the wire-level record_type of each answered record —
+/// the resolver reports DNSKEY rows back to us as RecordType::DNSKEY
+/// regardless of feature gating.
+pub async fn lookup_dnssec(host: &str, deadline: Duration) -> bool {
+    let result = timeout(deadline.min(Duration::from_secs(5)), async {
+        let resolver = Resolver::builder_tokio().ok()?.build();
+        let lookup = resolver.lookup(host, RecordType::DNSKEY).await.ok()?;
+        Some(
+            lookup
+                .record_iter()
+                .any(|r| r.record_type() == RecordType::DNSKEY),
+        )
+    })
+    .await;
+    result.ok().flatten().unwrap_or(false)
+}
+
 /// v0.5.40 — list authoritative NS records for the target zone.
 /// Returns sorted-deduplicated hostnames (trailing-dot stripped) so
 /// the output is deterministic across hickory random round-trips.

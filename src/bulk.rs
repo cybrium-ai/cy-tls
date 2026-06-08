@@ -89,6 +89,7 @@ fn failed_report(target: String) -> ScanReport {
         preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
         dns_soa: None,
         dns_ns: Vec::new(),
+        dnssec_signed: false,
     }
 }
 

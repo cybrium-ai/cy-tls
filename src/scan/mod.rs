@@ -106,6 +106,11 @@ pub struct ScanReport {
     /// (single-provider chains are vulnerable to vendor-side outage).
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub dns_ns: Vec<String>,
+    /// v0.5.41 — true when the target zone publishes a DNSKEY record
+    /// (prerequisite for DNSSEC signing). Detects the publish side;
+    /// doesn't validate the parent-DS chain end-to-end (that needs a
+    /// DNSSEC-validating resolver, out of scope for cy-tls).
+    pub dnssec_signed: bool,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -843,6 +848,11 @@ async fn scan_one(
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         dns_soa::lookup_ns(host_str, timeout).await
     };
+    // v0.5.41 — DNSSEC publish-side check.
+    let dnssec_signed = {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        dns_soa::lookup_dnssec(host_str, timeout).await
+    };
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
     Ok(ScanReport {
@@ -866,6 +876,7 @@ async fn scan_one(
         preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
         dns_soa,
         dns_ns,
+        dnssec_signed,
     })
 }
 
@@ -924,6 +935,7 @@ fn stub_report(
         preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
         dns_soa: None,
         dns_ns: Vec::new(),
+        dnssec_signed: false,
     }
 }
 
