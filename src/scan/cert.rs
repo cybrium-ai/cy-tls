@@ -6,8 +6,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use rustls::{ClientConfig, RootCertStore};
-use rustls_pki_types::ServerName;
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
+use rustls_pki_types::{CertificateDer, ServerName as PkiServerName, UnixTime};
 use serde::Serialize;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -18,6 +19,56 @@ use x509_parser::prelude::*;
 use super::oid_names;
 use super::timing::Timings;
 use crate::finding::{make, Finding};
+
+/// v0.5.59 — verifier that accepts every cert. Used by the tolerant
+/// fall-back probe so we can capture cert details from servers
+/// presenting expired / self-signed / hostname-mismatched leaves
+/// (the most common real-world breach indicators). Never used unless
+/// the strict-mode handshake fails first.
+#[derive(Debug)]
+struct NoVerify;
+impl ServerCertVerifier for NoVerify {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &PkiServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        vec![
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA512,
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            SignatureScheme::ECDSA_NISTP521_SHA512,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::ED25519,
+        ]
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CertificateInfo {
@@ -448,21 +499,51 @@ pub async fn inspect(
     let start = std::time::Instant::now();
     let (host_str, _port) = split_host_port(target)?;
 
-    let mut root_store = RootCertStore::empty();
-    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config = ClientConfig::builder()
-        .with_root_certificates(root_store)
+    // v0.5.59 — try strict-mode first (use webpki_roots, full chain
+    // validation). If the handshake fails (expired/self-signed/etc),
+    // fall back to a NoVerify verifier so we can still capture the
+    // cert and surface the right finding via contribute_findings().
+    let strict_root_store = {
+        let mut s = RootCertStore::empty();
+        s.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        s
+    };
+    let strict_config = ClientConfig::builder()
+        .with_root_certificates(strict_root_store)
         .with_no_client_auth();
-    let connector = TlsConnector::from(Arc::new(config));
+    let strict_connector = TlsConnector::from(Arc::new(strict_config));
 
+    let server_name = PkiServerName::try_from(host_str.clone())?;
     let tcp = timeout(deadline, TcpStream::connect(target)).await??;
-    let server_name = ServerName::try_from(host_str.clone())?;
-    let tls = timeout(deadline, connector.connect(server_name, tcp)).await??;
-
-    let (_, conn) = tls.get_ref();
-    let chain = conn
-        .peer_certificates()
-        .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
+    let chain_owned: Vec<CertificateDer<'static>>;
+    let strict_result = timeout(deadline, strict_connector.connect(server_name.clone(), tcp))
+        .await
+        .ok()
+        .and_then(|r| r.ok());
+    if let Some(tls) = strict_result {
+        let (_, conn) = tls.get_ref();
+        let chain = conn
+            .peer_certificates()
+            .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
+        chain_owned = chain.iter().map(|c| c.clone().into_owned()).collect();
+    } else {
+        // Strict mode failed — fall back to NoVerify so we can still
+        // grab the cert chain. This is the path expired/self-signed/
+        // hostname-mismatched sites take.
+        let tolerant_config = ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoVerify))
+            .with_no_client_auth();
+        let tolerant_connector = TlsConnector::from(Arc::new(tolerant_config));
+        let tcp2 = timeout(deadline, TcpStream::connect(target)).await??;
+        let tls = timeout(deadline, tolerant_connector.connect(server_name, tcp2)).await??;
+        let (_, conn) = tls.get_ref();
+        let chain = conn
+            .peer_certificates()
+            .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
+        chain_owned = chain.iter().map(|c| c.clone().into_owned()).collect();
+    }
+    let chain: &[CertificateDer<'static>] = &chain_owned;
     let leaf_der = chain
         .first()
         .ok_or_else(|| anyhow::anyhow!("empty cert chain"))?;
