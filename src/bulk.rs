@@ -91,6 +91,7 @@ fn failed_report(target: String) -> ScanReport {
         dns_ns: Vec::new(),
         dnssec_signed: false,
         http_redirect: Default::default(),
+        grade: Default::default(),
     }
 }
 

@@ -15,6 +15,7 @@ mod dns_soa;
 mod extensions;
 mod fallback_scsv;
 mod forward_secrecy;
+mod grade;
 mod grease;
 mod handshake_sim;
 mod headers;
@@ -116,6 +117,12 @@ pub struct ScanReport {
     /// redirects disabled. Empty (tested=false) when port 80 isn't
     /// reachable at all — that's the best posture.
     pub http_redirect: http_redirect::HttpRedirect,
+    /// v0.5.57 — Qualys-SSL-Labs-style composite grade. Computed AFTER
+    /// every other probe completes from the assembled inputs. Includes
+    /// per-axis subscores (protocol / key-exchange / cipher), a list
+    /// of grade caps (vulnerabilities holding the grade down), and a
+    /// list of grade bonuses (TLS 1.3 + FS-modern + HSTS = A+).
+    pub grade: grade::GradeReport,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -950,6 +957,15 @@ async fn scan_one(
     }
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
+    // v0.5.57 — composite grade computed AFTER every other probe so
+    // it sees the final findings vector + headers + protocol verdicts.
+    let grade_report = grade::compute(
+        &protocols,
+        certificate.as_ref(),
+        &headers,
+        &findings,
+        forward_secrecy_bucket,
+    );
     Ok(ScanReport {
         target: target.into(),
         ip,
@@ -973,6 +989,7 @@ async fn scan_one(
         dns_ns,
         dnssec_signed,
         http_redirect: http_redirect_result,
+        grade: grade_report,
     })
 }
 
@@ -1033,6 +1050,7 @@ fn stub_report(
         dns_ns: Vec::new(),
         dnssec_signed: false,
         http_redirect: http_redirect::HttpRedirect::default(),
+        grade: grade::GradeReport::default(),
     }
 }
 
