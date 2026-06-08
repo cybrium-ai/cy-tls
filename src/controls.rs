@@ -288,6 +288,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "CIS Apache Benchmark §6.4",
         ],
 
+        // ── Deprecated Report-To (v0.5.55) ──────────────────────────
+        "HTTP-DEPRECATED-REPORT-TO" => vec!["W3C Reporting API spec", "Chrome shipping plan 2025"],
+
         _ => vec![],
     }
 }

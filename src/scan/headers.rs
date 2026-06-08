@@ -124,6 +124,25 @@ pub struct HeaderInfo {
     /// the type is text-y but no charset is declared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
+    /// v0.5.55 — Origin-Agent-Cluster header value. Opts the origin
+    /// into process-isolation in browsers (Chrome / Safari). Presence
+    /// with `?1` is good posture; absence isn't a defect, just unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin_agent_cluster: Option<String>,
+    /// v0.5.55 — Reporting-Endpoints header value. Modern replacement
+    /// for the deprecated Report-To header; defines named endpoints
+    /// that CSP / NEL / COOP reports go to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reporting_endpoints: Option<String>,
+    /// v0.5.55 — Network Error Logging (NEL) header value. Browser
+    /// sends network-failure reports to the named Reporting-Endpoints
+    /// group. Presence is informational; can leak telemetry endpoints.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nel: Option<String>,
+    /// v0.5.55 — true when the legacy (W3C-deprecated) Report-To
+    /// header was observed. Triggers HTTP-DEPRECATED-REPORT-TO.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub has_legacy_report_to: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -243,6 +262,16 @@ impl HeaderInfo {
                 "HTTP-VIA-PRESENT",
                 host,
                 format!("Via header present: {v}"),
+            ));
+        }
+        // v0.5.55 — legacy Report-To header (deprecated by W3C in
+        // favor of Reporting-Endpoints). Browsers are dropping support
+        // — Chrome shipping plan removes it through 2025.
+        if self.has_legacy_report_to {
+            findings.push(make(
+                "HTTP-DEPRECATED-REPORT-TO",
+                host,
+                "Legacy `Report-To` response header observed — W3C-deprecated in favor of `Reporting-Endpoints`; Chrome shipping plan removes support through 2025",
             ));
         }
         // v0.5.54 — Content-Type charset hygiene. An HTML response
@@ -490,6 +519,33 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         if !trimmed.is_empty() {
             info.content_type = Some(trimmed.to_string());
         }
+    }
+    // v0.5.55 — modern isolation + reporting headers. Pure capture
+    // here; findings (if any) live in contribute_findings().
+    if let Some(v) = response.header("origin-agent-cluster") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.origin_agent_cluster = Some(trimmed.to_string());
+        }
+    }
+    if let Some(v) = response.header("reporting-endpoints") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.reporting_endpoints = Some(trimmed.to_string());
+        }
+    }
+    if let Some(v) = response.header("nel") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.nel = Some(trimmed.to_string());
+        }
+    }
+    // v0.5.55 — legacy Report-To detection (deprecated by W3C in
+    // favor of Reporting-Endpoints, dropped from Chrome shipping
+    // by 2025-Q4). Captured into a sentinel field on HeaderInfo;
+    // findings emitter sees the boolean.
+    if response.header("report-to").is_some() {
+        info.has_legacy_report_to = true;
     }
 
     // v0.5.49 — OPTIONS probe to detect TRACE method (XST surface).

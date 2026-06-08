@@ -221,6 +221,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Content-Type hygiene (v0.5.54) ──────────────────────────────
     ("HTTP-CONTENT-TYPE-NO-CHARSET", Severity::Low, "Response Content-Type is text-y (text/* or application/xhtml*) but lacks an explicit `charset=` parameter. Browser falls back to sniffing or OS-locale defaults, enabling UTF-7-based XSS bypass and Latin-1 character-confusion attacks"),
+
+    // ── Deprecated Report-To (v0.5.55) ──────────────────────────────
+    ("HTTP-DEPRECATED-REPORT-TO", Severity::Info, "Legacy `Report-To` response header observed. W3C deprecated it in favor of `Reporting-Endpoints`; Chrome's shipping plan removes support through 2025. Replace with `Reporting-Endpoints` group definitions"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -298,10 +301,11 @@ mod tests {
         // TLS-CERT-INTERMEDIATE-EXPIRED. v0.5.52 added
         // HTTP-SERVER-TIMING-PRESENT + HTTP-VIA-PRESENT.
         // v0.5.53 added DNS-CAA-NO-IODEF + DNS-CAA-NO-ISSUEWILD.
-        // v0.5.54 added HTTP-CONTENT-TYPE-NO-CHARSET.
+        // v0.5.54 added HTTP-CONTENT-TYPE-NO-CHARSET. v0.5.55 added
+        // HTTP-DEPRECATED-REPORT-TO.
         assert_eq!(
             FINDING_CATALOG.len(),
-            87,
+            88,
             "FINDING_CATALOG size drifted from spec"
         );
     }
