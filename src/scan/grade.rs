@@ -144,8 +144,13 @@ pub fn compute(
     }
 
     // ── Cipher strength score ───────────────────────────────────
-    // Default 90 (assumes ≥128-bit ciphers); downgraded by findings.
-    let mut cipher_score = 90;
+    // v0.5.63 — derive from the actual cipher list. Walk every cipher
+    // the server accepted across TLS 1.2 + 1.3, bucket by family, and
+    // score from the WEAKEST (Qualys methodology). AEAD-only at
+    // ≥ 256-bit gets 100, AEAD-only at ≥ 128 gets 95, presence of any
+    // CBC drops to 80, RC4/3DES/EXPORT cap below.
+    let mut cipher_score =
+        cipher_score_from_suites(&protocols.tls12.ciphers, &protocols.tls13.ciphers);
     if has_finding(findings, "TLS-NULL-CIPHER") {
         cipher_score = 0;
         caps.push("NULL cipher accepted — grade is F".into());
@@ -283,6 +288,108 @@ pub fn compute(
 
 fn has_finding(findings: &[Finding], id: &str) -> bool {
     findings.iter().any(|f| f.id == id)
+}
+
+/// v0.5.63 — derive cipher_score from the cipher lists the server
+/// actually accepted. Walks TLS 1.2 + 1.3 suite lists and returns
+/// (strongest + weakest) / 2 per the Qualys SSL Labs methodology —
+/// strongest sets the upper bound, weakest the lower, final is the
+/// midpoint. Avoids over-penalising hosts that allow legacy CBC
+/// alongside modern AEAD (a common safe posture for old-client
+/// compatibility) while still surfacing the weak floor.
+///
+/// When no cipher list is available (e.g. handshake failure before
+/// enum), returns a neutral 90.
+fn cipher_score_from_suites(tls12: &[String], tls13: &[String]) -> u32 {
+    if tls12.is_empty() && tls13.is_empty() {
+        return 90;
+    }
+    let mut strongest: u32 = 0;
+    let mut weakest: u32 = 100;
+    for suite in tls12.iter().chain(tls13.iter()) {
+        let s = score_for_suite(suite);
+        if s > strongest {
+            strongest = s;
+        }
+        if s < weakest {
+            weakest = s;
+        }
+    }
+    (strongest + weakest) / 2
+}
+
+/// Score an individual cipher suite name. Matches on substrings of
+/// the canonical IANA name (`TLS_AES_256_GCM_SHA384`,
+/// `TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA`, etc).
+fn score_for_suite(suite: &str) -> u32 {
+    let s = suite.to_ascii_uppercase();
+    // Hard floors first.
+    if s.contains("NULL") {
+        return 0;
+    }
+    if s.contains("EXPORT") || s.contains("ANON") {
+        return 20;
+    }
+    if s.contains("RC4") {
+        return 40;
+    }
+    if s.contains("3DES") || s.contains("DES_CBC") {
+        return 60;
+    }
+    // AEAD families.
+    let is_aead = s.contains("GCM")
+        || s.contains("CHACHA20_POLY1305")
+        || s.contains("CHACHA20-POLY1305")
+        || s.contains("CCM");
+    // Key bit hint from the suite name.
+    let bits = if s.contains("AES_256") || s.contains("AES256") {
+        256
+    } else if s.contains("AES_128") || s.contains("AES128") {
+        128
+    } else if s.contains("CHACHA20") {
+        256
+    } else if s.contains("SEED") || s.contains("CAMELLIA_128") {
+        128
+    } else if s.contains("CAMELLIA_256") {
+        256
+    } else {
+        128
+    };
+    if is_aead {
+        if bits >= 256 {
+            100
+        } else {
+            95
+        }
+    } else if s.contains("CBC") {
+        80
+    } else {
+        // Unknown form — be slightly conservative.
+        85
+    }
+}
+
+#[cfg(test)]
+mod suite_score_tests {
+    use super::score_for_suite;
+    #[test]
+    fn aead_suites_score_high() {
+        assert_eq!(score_for_suite("TLS_AES_256_GCM_SHA384"), 100);
+        assert_eq!(score_for_suite("TLS_AES_128_GCM_SHA256"), 95);
+        assert_eq!(score_for_suite("TLS_CHACHA20_POLY1305_SHA256"), 100);
+        assert_eq!(score_for_suite("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"), 95);
+    }
+    #[test]
+    fn cbc_suites_drop_to_80() {
+        assert_eq!(score_for_suite("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA"), 80);
+    }
+    #[test]
+    fn weak_suites_floor() {
+        assert_eq!(score_for_suite("TLS_RSA_WITH_RC4_128_SHA"), 40);
+        assert_eq!(score_for_suite("TLS_RSA_WITH_3DES_EDE_CBC_SHA"), 60);
+        assert_eq!(score_for_suite("TLS_NULL_WITH_NULL_NULL"), 0);
+        assert!(score_for_suite("TLS_DH_anon_WITH_AES_128_CBC_SHA") <= 20);
+    }
 }
 
 /// Maximum score for the given letter (used to drive caps).
