@@ -233,6 +233,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── SCT count policy (v0.5.56) ──────────────────────────────────
     ("TLS-CERT-SCT-COUNT-INSUFFICIENT", Severity::Medium, "Cert has fewer SCTs than Chrome's 2022 CT policy requires — <180-day-lifetime certs need ≥2 SCTs, ≥180-day certs need ≥3. Browsers treat the cert as CT-non-compliant"),
+
+    // ── Trust outcome (v0.5.61) ─────────────────────────────────────
+    ("TLS-CHAIN-NOT-TRUSTED-MOZILLA", Severity::High, "Chain fails the Mozilla / webpki trust-store validation (strict-mode handshake rejected). Fires only when none of the more-specific cert findings already explain the failure — usually means an issuer that's not in the public trust store (private CA, decommissioned-but-still-deployed root, etc)"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -313,10 +316,11 @@ mod tests {
         // v0.5.53 added DNS-CAA-NO-IODEF + DNS-CAA-NO-ISSUEWILD.
         // v0.5.54 added HTTP-CONTENT-TYPE-NO-CHARSET. v0.5.55 added
         // HTTP-DEPRECATED-REPORT-TO. v0.5.56 added
-        // TLS-CERT-SCT-COUNT-INSUFFICIENT.
+        // TLS-CERT-SCT-COUNT-INSUFFICIENT. v0.5.61 added
+        // TLS-CHAIN-NOT-TRUSTED-MOZILLA.
         assert_eq!(
             FINDING_CATALOG.len(),
-            89,
+            90,
             "FINDING_CATALOG size drifted from spec"
         );
     }

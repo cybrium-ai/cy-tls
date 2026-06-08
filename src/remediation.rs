@@ -51,6 +51,7 @@ pub fn for_id(id: &str) -> &'static str {
         "TLS-CERT-INTERMEDIATE-EXPIRED" => "Reissue the leaf with a current intermediate IMMEDIATELY — strict-mode clients are already rejecting the chain regardless of leaf freshness.",
         "TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE" => "Verify the URL in the AIA caIssuers extension is reachable. If the CA has rotated, reissue with the current chain so the URL points somewhere valid.",
         "TLS-CERT-SCT-COUNT-INSUFFICIENT" => "Reissue from a CA that embeds enough SCTs to meet Chrome's 2022 policy: < 180-day certs need ≥ 2 SCTs, ≥ 180-day need ≥ 3. Most public CAs already do this.",
+        "TLS-CHAIN-NOT-TRUSTED-MOZILLA" => "Reissue from a publicly-trusted CA whose root is in the Mozilla Included CA list (Let's Encrypt, DigiCert, Sectigo, GlobalSign — all free or low-cost). If this is an internal-only service using a private CA, that's expected; ensure clients have the private root pinned.",
         "TLS-CERT-SHARED-INFRA-CERT" => "",
 
         // ── OCSP / SCT ──────────────────────────────────────────────

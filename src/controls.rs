@@ -298,6 +298,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "CA/B Forum BR §7.1.2.2",
         ],
 
+        // ── Trust outcome (v0.5.61) ─────────────────────────────────
+        "TLS-CHAIN-NOT-TRUSTED-MOZILLA" => vec![
+            "NIST 800-53 SC-17",
+            "PCI DSS 4.0 §4.2.1.1",
+            "Mozilla Root Store Policy 2.7",
+            "CA/B Forum BR §3.2",
+        ],
+
         _ => vec![],
     }
 }

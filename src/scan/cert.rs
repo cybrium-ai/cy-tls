@@ -20,6 +20,26 @@ use super::oid_names;
 use super::timing::Timings;
 use crate::finding::{make, Finding};
 
+/// v0.5.61 — turn a strict-mode rustls error string into a short
+/// human label. Surfaces into `trust_reason` so dashboards explain
+/// WHY the chain failed Mozilla validation, not just THAT it did.
+fn classify_strict_failure(err: &str) -> String {
+    let lower = err.to_ascii_lowercase();
+    if lower.contains("expired") || lower.contains("not yet valid") {
+        "leaf or chain cert outside validity window".into()
+    } else if lower.contains("notvalidforname") || lower.contains("not valid for name") {
+        "hostname mismatch (target not in SAN)".into()
+    } else if lower.contains("unknownissuer") || lower.contains("untrusted") {
+        "chain doesn't root in the Mozilla / webpki trust store".into()
+    } else if lower.contains("badsignature") || lower.contains("invalid signature") {
+        "cert signature failed validation".into()
+    } else if lower.contains("invalidpurpose") {
+        "leaf cert lacks the serverAuth EKU".into()
+    } else {
+        format!("strict-mode handshake rejected: {err}")
+    }
+}
+
 /// v0.5.59 — verifier that accepts every cert. Used by the tolerant
 /// fall-back probe so we can capture cert details from servers
 /// presenting expired / self-signed / hostname-mismatched leaves
@@ -98,6 +118,15 @@ pub struct CertificateInfo {
     /// TLS-CERT-INTERMEDIATE-EXPIRED.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub chain_intermediates_days_remaining: Vec<i64>,
+    /// v0.5.61 — explicit trust-validation outcome. True when the
+    /// strict-mode handshake (full chain validation against the
+    /// Mozilla / webpki_roots trust store) succeeded. False when the
+    /// strict handshake failed and we had to fall back to the
+    /// NoVerify verifier to capture the cert anyway. `trust_reason`
+    /// gives a short human label for the failure mode when False.
+    pub mozilla_trusted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_reason: Option<String>,
     pub self_signed: bool,
     pub ev: bool,
     pub must_staple: bool,
@@ -441,6 +470,37 @@ impl CertificateInfo {
                 ));
             }
         }
+        // v0.5.61 — explicit Mozilla-trust outcome. Mirrors what
+        // Qualys SSL Labs and SSLyze surface as the headline trust
+        // verdict. Only fires when strict-mode handshake failed AND
+        // none of the more-specific cert findings already fired (to
+        // avoid double-reporting expired/self-signed which already
+        // have their own dedicated findings).
+        if !self.mozilla_trusted {
+            let already_reported = findings.iter().any(|f| {
+                matches!(
+                    f.id,
+                    "TLS-CERT-EXPIRED"
+                        | "TLS-CERT-SELF-SIGNED"
+                        | "TLS-CERT-HOSTNAME-MISMATCH"
+                        | "TLS-CERT-NOT-YET-VALID"
+                        | "TLS-CERT-INTERMEDIATE-EXPIRED"
+                        | "TLS-CERT-WEAK-SIGNATURE"
+                        | "TLS-CERT-MISSING-SERVER-AUTH-EKU"
+                )
+            });
+            if !already_reported {
+                let reason = self
+                    .trust_reason
+                    .as_deref()
+                    .unwrap_or("strict-mode handshake rejected");
+                findings.push(make(
+                    "TLS-CHAIN-NOT-TRUSTED-MOZILLA",
+                    host,
+                    format!("Chain failed Mozilla / webpki trust-store validation: {reason}"),
+                ));
+            }
+        }
         // v0.5.51 — intermediate cert expiry. A leaf with a long
         // not_after but an intermediate expiring tomorrow still breaks
         // browser chain validation tomorrow. Most CAs rotate
@@ -516,32 +576,41 @@ pub async fn inspect(
     let server_name = PkiServerName::try_from(host_str.clone())?;
     let tcp = timeout(deadline, TcpStream::connect(target)).await??;
     let chain_owned: Vec<CertificateDer<'static>>;
-    let strict_result = timeout(deadline, strict_connector.connect(server_name.clone(), tcp))
+    // v0.5.61 — track which path produced the chain so we can mark
+    // mozilla_trusted explicitly + give a reason when False.
+    let mut mozilla_trusted = false;
+    let mut trust_reason: Option<String> = None;
+    let strict_attempt = timeout(deadline, strict_connector.connect(server_name.clone(), tcp))
         .await
-        .ok()
-        .and_then(|r| r.ok());
-    if let Some(tls) = strict_result {
-        let (_, conn) = tls.get_ref();
-        let chain = conn
-            .peer_certificates()
-            .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
-        chain_owned = chain.iter().map(|c| c.clone().into_owned()).collect();
-    } else {
-        // Strict mode failed — fall back to NoVerify so we can still
-        // grab the cert chain. This is the path expired/self-signed/
-        // hostname-mismatched sites take.
-        let tolerant_config = ClientConfig::builder()
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(NoVerify))
-            .with_no_client_auth();
-        let tolerant_connector = TlsConnector::from(Arc::new(tolerant_config));
-        let tcp2 = timeout(deadline, TcpStream::connect(target)).await??;
-        let tls = timeout(deadline, tolerant_connector.connect(server_name, tcp2)).await??;
-        let (_, conn) = tls.get_ref();
-        let chain = conn
-            .peer_certificates()
-            .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
-        chain_owned = chain.iter().map(|c| c.clone().into_owned()).collect();
+        .map_err(|_| "handshake timed out".to_string())
+        .and_then(|r| r.map_err(|e| classify_strict_failure(&e.to_string())));
+    match strict_attempt {
+        Ok(tls) => {
+            mozilla_trusted = true;
+            let (_, conn) = tls.get_ref();
+            let chain = conn
+                .peer_certificates()
+                .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
+            chain_owned = chain.iter().map(|c| c.clone().into_owned()).collect();
+        }
+        Err(reason) => {
+            // Strict mode failed — fall back to NoVerify so we can still
+            // grab the cert chain. This is the path expired/self-signed/
+            // hostname-mismatched sites take.
+            trust_reason = Some(reason);
+            let tolerant_config = ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(NoVerify))
+                .with_no_client_auth();
+            let tolerant_connector = TlsConnector::from(Arc::new(tolerant_config));
+            let tcp2 = timeout(deadline, TcpStream::connect(target)).await??;
+            let tls = timeout(deadline, tolerant_connector.connect(server_name, tcp2)).await??;
+            let (_, conn) = tls.get_ref();
+            let chain = conn
+                .peer_certificates()
+                .ok_or_else(|| anyhow::anyhow!("no peer certificates"))?;
+            chain_owned = chain.iter().map(|c| c.clone().into_owned()).collect();
+        }
     }
     let chain: &[CertificateDer<'static>] = &chain_owned;
     let leaf_der = chain
@@ -551,6 +620,8 @@ pub async fn inspect(
     // to intercept; deferred to v0.2.1 ("OCSP via rasn-ocsp" item in TODO).
     let mut info = parse_leaf(leaf_der.as_ref(), chain.len() as u32, None)?;
     info.chain_order_correct = chain_order_is_correct(chain);
+    info.mozilla_trusted = mozilla_trusted;
+    info.trust_reason = trust_reason;
 
     // v0.5.51 — walk the non-leaf chain entries and capture each
     // cert's days-to-expiry. Lets contribute_findings() emit
@@ -681,6 +752,10 @@ fn parse_leaf(
         // Default empty; cert::inspect() walks the chain and pushes
         // one entry per intermediate.
         chain_intermediates_days_remaining: Vec::new(),
+        // v0.5.61 — defaults; cert::inspect() overwrites with the
+        // real strict-vs-tolerant outcome once the chain is in hand.
+        mozilla_trusted: false,
+        trust_reason: None,
         self_signed,
         ev: has_ev_policy_oid(&cert),
         must_staple,
