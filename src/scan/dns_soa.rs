@@ -61,3 +61,28 @@ fn rname_to_email(rname: &str) -> String {
         None => trimmed.to_string(),
     }
 }
+
+/// v0.5.40 — list authoritative NS records for the target zone.
+/// Returns sorted-deduplicated hostnames (trailing-dot stripped) so
+/// the output is deterministic across hickory random round-trips.
+pub async fn lookup_ns(host: &str, deadline: Duration) -> Vec<String> {
+    let result = timeout(deadline.min(Duration::from_secs(5)), async {
+        let resolver = Resolver::builder_tokio().ok()?.build();
+        let lookup = resolver.lookup(host, RecordType::NS).await.ok()?;
+        let mut out: Vec<String> = lookup
+            .iter()
+            .filter_map(|r| {
+                if let hickory_resolver::proto::rr::RData::NS(ns) = r {
+                    Some(ns.0.to_string().trim_end_matches('.').to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        out.sort();
+        out.dedup();
+        Some(out)
+    })
+    .await;
+    result.ok().flatten().unwrap_or_default()
+}

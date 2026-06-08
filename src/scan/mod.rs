@@ -101,6 +101,11 @@ pub struct ScanReport {
     /// minimum. None when zone has no SOA or DNS lookup failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dns_soa: Option<dns_soa::SoaRecord>,
+    /// v0.5.40 — authoritative NS records for the target zone.
+    /// Reveals provider lock-in + DNS redundancy posture
+    /// (single-provider chains are vulnerable to vendor-side outage).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub dns_ns: Vec<String>,
 }
 
 pub async fn run(args: ScanArgs) -> Result<()> {
@@ -833,6 +838,11 @@ async fn scan_one(
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         dns_soa::lookup(host_str, timeout).await
     };
+    // v0.5.40 — DNS NS lookup.
+    let dns_ns = {
+        let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
+        dns_soa::lookup_ns(host_str, timeout).await
+    };
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
     Ok(ScanReport {
@@ -855,6 +865,7 @@ async fn scan_one(
         tolerates_grease,
         preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
         dns_soa,
+        dns_ns,
     })
 }
 
@@ -912,6 +923,7 @@ fn stub_report(
         tolerates_grease: false,
         preload_list_refreshed_at: crate::preload::PRELOAD_LIST_REFRESHED_AT,
         dns_soa: None,
+        dns_ns: Vec::new(),
     }
 }
 
