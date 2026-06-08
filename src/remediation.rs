@@ -56,6 +56,9 @@ pub fn for_id(id: &str) -> &'static str {
         "HTTP-CSP-UNSAFE-INLINE" => "Replace `'unsafe-inline'` with per-element nonces (`nonce-<random>`) or hashes (`sha256-...`). For inline event handlers (`onclick=`) move to addEventListener. Modern frameworks (React, Vue, Angular) all support nonce-based CSP out of the box.",
         "HTTP-X-FRAME-OPTIONS-MISSING" => "Add `X-Frame-Options: SAMEORIGIN` OR a `Content-Security-Policy: frame-ancestors 'self'` directive. The CSP form is the modern equivalent and supersedes XFO when set.",
         "HTTP-NOSNIFF-MISSING" => "Add `X-Content-Type-Options: nosniff` to every response. nginx: `add_header X-Content-Type-Options nosniff always;`. Apache: `Header always set X-Content-Type-Options nosniff`. One line, zero downside.",
+        "HTTP-CSP-UNSAFE-EVAL" => "Audit your codebase for eval() / new Function() / setTimeout(string) / setInterval(string) and replace each. If a library forces it (older AngularJS, some templating engines), upgrade or replace the library — keeping `'unsafe-eval'` defeats most of the XSS-mitigation value of CSP.",
+        "HTTP-CSP-DATA-IN-SCRIPT-SRC" => "Remove `data:` from the script-src directive. If you genuinely need data: URLs they should be in img-src/font-src only. data: in script-src is a classic CSP-bypass primitive.",
+        "HTTP-CSP-WILDCARD-SCRIPT-SRC" => "Replace `*` with an explicit allowlist of trusted origins. Use Google's CSP Evaluator to pick a policy; for nonce-based modern apps, `'self' 'nonce-<random>'` is usually the goal.",
         "TLS-CERT-SHARED-INFRA-CERT" => "",
 
         // ── OCSP / SCT ──────────────────────────────────────────────

@@ -286,6 +286,36 @@ impl HeaderInfo {
                     format!("CSP policy contains 'unsafe-inline' — defeats most of the XSS-mitigation value of CSP. Use nonces or hashes instead: {csp}"),
                 ));
             }
+            // v0.5.66 — extended CSP danger patterns. Each is a real
+            // CSP-bypass primitive Mozilla Observatory + Google CSP
+            // Evaluator flag as dangerous.
+            if lower.contains("'unsafe-eval'") || lower.contains("unsafe-eval") {
+                findings.push(make(
+                    "HTTP-CSP-UNSAFE-EVAL",
+                    host,
+                    format!("CSP policy contains 'unsafe-eval' — allows eval()/new Function()/setTimeout(string)/setInterval(string) at runtime, re-introducing the dynamic-code-execution surface CSP is supposed to close: {csp}"),
+                ));
+            }
+            // script-src extraction — find the relevant directive value
+            // string. Falls back to default-src if script-src is absent.
+            if let Some(script_value) = csp_directive_value(&lower, "script-src")
+                .or_else(|| csp_directive_value(&lower, "default-src"))
+            {
+                if script_value.split_ascii_whitespace().any(|t| t == "data:") {
+                    findings.push(make(
+                        "HTTP-CSP-DATA-IN-SCRIPT-SRC",
+                        host,
+                        format!("CSP script-src (or default-src fallback) allows `data:` — attacker can construct a data: URL containing arbitrary script and the browser will execute it: {csp}"),
+                    ));
+                }
+                if script_value.split_ascii_whitespace().any(|t| t == "*") {
+                    findings.push(make(
+                        "HTTP-CSP-WILDCARD-SCRIPT-SRC",
+                        host,
+                        format!("CSP script-src (or default-src fallback) is `*` — every external origin can load scripts; CSP provides no XSS mitigation: {csp}"),
+                    ));
+                }
+            }
         }
         // v0.5.64 — clickjacking gap. Either X-Frame-Options OR a CSP
         // frame-ancestors directive must be present; the latter is the
@@ -626,6 +656,27 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
     Ok(info)
 }
 
+/// v0.5.66 — extract the value of a named CSP directive from a CSP
+/// policy string. Returns None if the directive is absent. Input is
+/// expected to be already lowercased.
+pub(crate) fn csp_directive_value<'a>(lower_csp: &'a str, directive: &str) -> Option<&'a str> {
+    for chunk in lower_csp.split(';') {
+        let chunk = chunk.trim();
+        if let Some(rest) = chunk.strip_prefix(directive) {
+            // Next char must be whitespace OR end-of-chunk (so we
+            // don't match "script-src-elem" when asked for "script-src").
+            if let Some(c) = rest.chars().next() {
+                if c.is_whitespace() {
+                    return Some(rest.trim());
+                }
+            } else {
+                return Some("");
+            }
+        }
+    }
+    None
+}
+
 /// v0.5.46 — parse a single Set-Cookie header line into a CookieAudit.
 /// Returns None when the line has no name=value pair (malformed).
 pub(crate) fn parse_cookie_audit(raw: &str) -> Option<CookieAudit> {
@@ -731,7 +782,24 @@ pub(crate) fn classify_server_product(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_server_product, parse_cookie_audit, server_header_leaks_version};
+    use super::{
+        classify_server_product, csp_directive_value, parse_cookie_audit,
+        server_header_leaks_version,
+    };
+
+    #[test]
+    fn csp_directive_value_extracts() {
+        let policy = "default-src 'self'; script-src 'self' https://cdn.example.com; img-src *";
+        assert_eq!(
+            csp_directive_value(policy, "script-src"),
+            Some("'self' https://cdn.example.com")
+        );
+        assert_eq!(csp_directive_value(policy, "img-src"), Some("*"));
+        assert_eq!(csp_directive_value(policy, "frame-src"), None);
+        // Don't match script-src-elem when asked for script-src.
+        let policy2 = "script-src-elem 'self'; script-src 'none'";
+        assert_eq!(csp_directive_value(policy2, "script-src"), Some("'none'"));
+    }
 
     #[test]
     fn server_product_classification() {

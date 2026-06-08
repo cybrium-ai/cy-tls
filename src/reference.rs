@@ -66,9 +66,11 @@ pub fn for_id(id: &str) -> &'static str {
         }
         "TLS-CERT-SHARED-INFRA-CERT" => "https://www.cloudflare.com/learning/ssl/what-is-ssl/",
         "TLS-CHAIN-NOT-TRUSTED-MOZILLA" => "https://wiki.mozilla.org/CA/Included_Certificates",
-        "HTTP-CSP-MISSING" | "HTTP-CSP-UNSAFE-INLINE" => {
-            "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-        }
+        "HTTP-CSP-MISSING"
+        | "HTTP-CSP-UNSAFE-INLINE"
+        | "HTTP-CSP-UNSAFE-EVAL"
+        | "HTTP-CSP-DATA-IN-SCRIPT-SRC"
+        | "HTTP-CSP-WILDCARD-SCRIPT-SRC" => "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
         "HTTP-X-FRAME-OPTIONS-MISSING" => "https://datatracker.ietf.org/doc/html/rfc7034",
         "HTTP-NOSNIFF-MISSING" => {
             "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"

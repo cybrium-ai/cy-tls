@@ -317,6 +317,11 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── nosniff (v0.5.65) ───────────────────────────────────────
         "HTTP-NOSNIFF-MISSING" => vec!["OWASP ASVS 14.4.5", "MIME Sniffing Standard §6"],
 
+        // ── Extended CSP danger (v0.5.66) ───────────────────────────
+        "HTTP-CSP-UNSAFE-EVAL" | "HTTP-CSP-DATA-IN-SCRIPT-SRC" | "HTTP-CSP-WILDCARD-SCRIPT-SRC" => {
+            vec!["OWASP ASVS 14.4.3", "NIST 800-53 SI-10", "CSP Level 3"]
+        }
+
         _ => vec![],
     }
 }

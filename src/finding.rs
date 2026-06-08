@@ -250,6 +250,11 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── MIME sniffing (v0.5.65) ─────────────────────────────────────
     ("HTTP-NOSNIFF-MISSING", Severity::Low, "X-Content-Type-Options header is absent or not set to 'nosniff' — browsers will MIME-sniff response bodies, enabling CSS-as-script and image-polyglot XSS vectors"),
+
+    // ── Extended CSP danger (v0.5.66) ───────────────────────────────
+    ("HTTP-CSP-UNSAFE-EVAL",         Severity::Medium, "CSP policy contains 'unsafe-eval' — allows eval()/new Function()/setTimeout(string)/setInterval(string), re-introducing the dynamic-code-execution surface CSP exists to close"),
+    ("HTTP-CSP-DATA-IN-SCRIPT-SRC",  Severity::High,   "CSP script-src (or default-src fallback) allows `data:` — attacker can construct a data: URL containing arbitrary script and the browser will execute it. Classic CSP-bypass primitive"),
+    ("HTTP-CSP-WILDCARD-SCRIPT-SRC", Severity::High,   "CSP script-src (or default-src fallback) is `*` — every external origin can load scripts; CSP provides no XSS mitigation under this policy"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -334,10 +339,12 @@ mod tests {
         // TLS-CERT-SCT-COUNT-INSUFFICIENT. v0.5.61 added
         // TLS-CHAIN-NOT-TRUSTED-MOZILLA. v0.5.64 added HTTP-CSP-MISSING,
         // HTTP-CSP-UNSAFE-INLINE, HTTP-X-FRAME-OPTIONS-MISSING.
-        // v0.5.65 added HTTP-NOSNIFF-MISSING.
+        // v0.5.65 added HTTP-NOSNIFF-MISSING. v0.5.66 added
+        // HTTP-CSP-UNSAFE-EVAL + HTTP-CSP-DATA-IN-SCRIPT-SRC +
+        // HTTP-CSP-WILDCARD-SCRIPT-SRC.
         assert_eq!(
             FINDING_CATALOG.len(),
-            94,
+            97,
             "FINDING_CATALOG size drifted from spec"
         );
     }
