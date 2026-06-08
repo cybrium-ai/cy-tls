@@ -15,6 +15,7 @@ mod error;
 mod finding;
 mod gui;
 mod hardware_rot;
+mod licensing;
 mod mcp;
 mod output;
 mod preload;
@@ -24,7 +25,7 @@ mod scan;
 mod self_update;
 
 use clap::Parser;
-use cli::{Cli, Command};
+use cli::{Cli, Command, LicenseCommand};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -54,5 +55,53 @@ async fn main() -> anyhow::Result<()> {
             // tokio reactor on the network round-trip + binary write.
             tokio::task::spawn_blocking(self_update::run).await?
         }
+        Command::Fingerprint => {
+            let fp = licensing::fingerprint();
+            println!("{}", serde_json::to_string_pretty(&fp)?);
+            Ok(())
+        }
+        Command::License(sub) => match sub {
+            LicenseCommand::Show => {
+                match licensing::load_license()? {
+                    Some(state) => println!("{}", serde_json::to_string_pretty(&state)?),
+                    None => println!("{}", serde_json::json!({"bound": false})),
+                }
+                Ok(())
+            }
+            LicenseCommand::Activate { key } => {
+                let state = licensing::activate_local(&key)?;
+                let path = licensing::license_path()?;
+                eprintln!(
+                    "Bound to license_id={} at {}",
+                    state.license_id,
+                    path.display()
+                );
+                eprintln!(
+                    "Phase 1: local-only binding (no server signature). Fingerprint source: {} ({})",
+                    state.fingerprint.host_id_source,
+                    state.fingerprint.root_of_trust.kind.as_str()
+                );
+                Ok(())
+            }
+            LicenseCommand::Deactivate => {
+                if licensing::remove_license()? {
+                    eprintln!("License removed.");
+                } else {
+                    eprintln!("No license file to remove.");
+                }
+                Ok(())
+            }
+            LicenseCommand::Verify => {
+                let ok = licensing::verify_binding()?;
+                if ok {
+                    eprintln!("OK — current hardware fingerprint matches stored license.");
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!(
+                        "MISMATCH — current hardware fingerprint differs from the one stored at activation. The license may have been copied between hosts, or this host's TPM / firmware UUID changed."
+                    ))
+                }
+            }
+        },
     }
 }

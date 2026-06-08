@@ -68,6 +68,40 @@ pub enum Command {
     /// Alias for `update` — matches the `brew upgrade` / `scoop update`
     /// vocabulary users expect.
     Upgrade,
+
+    /// Print the stable hardware fingerprint for this host. Sourced from
+    /// TPM EK / Apple Secure Enclave when available, falling back to
+    /// firmware UUID / machine-id. The `host_id_source` field discloses
+    /// which class of identifier was used.
+    Fingerprint,
+
+    /// Per-host license-state CRUD. v0.5.72 / Sprint 127 Phase 1: local
+    /// only, no enforcement, no network. Phase 3 wires refuse-to-run
+    /// once the backend licensing endpoint ships.
+    #[command(subcommand)]
+    License(LicenseCommand),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum LicenseCommand {
+    /// Show the current license-state file, or `{"bound": false}` when
+    /// none exists.
+    Show,
+
+    /// Bind this host to the given license key. Phase 1: stores the
+    /// key + current fingerprint locally only.
+    Activate {
+        /// License key issued by Cybrium (e.g. `lic_…`).
+        #[arg(required = true)]
+        key: String,
+    },
+
+    /// Remove the local license-state file.
+    Deactivate,
+
+    /// Re-read the current hardware fingerprint and compare it to the
+    /// fingerprint stored in the license file. Exits non-zero on mismatch.
+    Verify,
 }
 
 #[derive(Debug, Args)]

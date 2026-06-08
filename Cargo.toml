@@ -1,6 +1,6 @@
 [package]
 name        = "cy-tls"
-version     = "0.5.71"
+version     = "0.5.72"
 edition     = "2021"
 rust-version = "1.75"
 description = "Cybrium SSL/TLS posture scanner — full probe suite, JSONL streaming, HSTS preload lookup."
@@ -32,6 +32,10 @@ rustls-pki-types = "1.7"
 # trust stores. Multi-store chain validation closes the parity gap vs
 # SSLyze / Qualys.
 rustls-pemfile = "2"
+
+# v0.5.72 — per-OS home / config-dir resolution for the license-state
+# file. Tiny well-maintained crate, no transitive churn.
+dirs = "5"
 
 # Cert parsing
 x509-parser  = "0.16"
