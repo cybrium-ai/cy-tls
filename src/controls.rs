@@ -219,6 +219,28 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "PCI DSS 6.5.5",
         ],
 
+        // ── Cookie hygiene (v0.5.46) ────────────────────────────────
+        "HTTP-COOKIE-NO-SECURE" => vec![
+            "OWASP ASVS 3.4.1",
+            "NIST 800-53 SC-23(3)",
+            "PCI DSS 6.5.10",
+            "RFC 6265 §4.1.2.5",
+        ],
+        "HTTP-COOKIE-NO-HTTPONLY" => vec![
+            "OWASP ASVS 3.4.2",
+            "NIST 800-53 SI-10(5)",
+            "PCI DSS 6.5.7",
+            "RFC 6265 §4.1.2.6",
+        ],
+        "HTTP-COOKIE-NO-SAMESITE" => vec![
+            "OWASP ASVS 3.4.3",
+            "NIST 800-53 SC-23",
+            "RFC 6265bis §4.1.2.7",
+        ],
+        "HTTP-CACHE-CONTROL-MISSING" => {
+            vec!["OWASP ASVS 8.2.1", "NIST 800-53 SC-28", "RFC 7234 §5.2.2.6"]
+        }
+
         _ => vec![],
     }
 }

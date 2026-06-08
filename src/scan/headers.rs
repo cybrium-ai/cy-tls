@@ -80,6 +80,30 @@ pub struct HeaderInfo {
     /// posture signal regardless of value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub x_powered_by: Option<String>,
+    /// v0.5.46 — per-cookie hygiene audit. One entry per Set-Cookie
+    /// header observed on the root GET (capped at 16 to bound output).
+    /// Empty when the server set no cookies on `/`.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub set_cookies: Vec<CookieAudit>,
+    /// v0.5.46 — Cache-Control header value. Surfaced raw; HTTP-CACHE-
+    /// CONTROL-MISSING fires only when the response sets cookies (a
+    /// strong signal of sensitive content) AND has no Cache-Control
+    /// header at all — middlebox-cacheable response leaking session
+    /// state to the next requester.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CookieAudit {
+    /// Cookie name. We don't capture the value — it may be a session
+    /// token or other secret.
+    pub name: String,
+    pub secure: bool,
+    pub http_only: bool,
+    /// Lowercased SameSite attribute value when present
+    /// ("strict"/"lax"/"none"), otherwise None.
+    pub same_site: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -132,6 +156,44 @@ impl HeaderInfo {
                 "HTTP-X-POWERED-BY-PRESENT",
                 host,
                 format!("X-Powered-By header present: {v}"),
+            ));
+        }
+        // v0.5.46 — per-cookie hygiene. Each missing attribute fires
+        // its own finding so dashboards can ladder severity (a cookie
+        // missing all three is three distinct issues, each with its
+        // own remediation control mapping).
+        for c in &self.set_cookies {
+            if !c.secure {
+                findings.push(make(
+                    "HTTP-COOKIE-NO-SECURE",
+                    host,
+                    format!("Set-Cookie {} lacks the Secure attribute — cookie will be transmitted over plain HTTP if the user is ever downgraded", c.name),
+                ));
+            }
+            if !c.http_only {
+                findings.push(make(
+                    "HTTP-COOKIE-NO-HTTPONLY",
+                    host,
+                    format!("Set-Cookie {} lacks the HttpOnly attribute — cookie is readable from JavaScript, expanding the impact of any XSS", c.name),
+                ));
+            }
+            if c.same_site.is_none() {
+                findings.push(make(
+                    "HTTP-COOKIE-NO-SAMESITE",
+                    host,
+                    format!("Set-Cookie {} has no SameSite attribute — cross-site CSRF protection relies on browser default (Lax in Chrome, None in old Safari)", c.name),
+                ));
+            }
+        }
+        // v0.5.46 — Cache-Control gap when cookies are present.
+        // A response that sets cookies AND has no Cache-Control header
+        // can be cached by middleboxes; the cached body (containing the
+        // Set-Cookie line) gets served to the next requester.
+        if !self.set_cookies.is_empty() && self.cache_control.is_none() {
+            findings.push(make(
+                "HTTP-CACHE-CONTROL-MISSING",
+                host,
+                "Response sets cookies but has no Cache-Control header — intermediate caches may store the response (including the Set-Cookie line) and serve it to other clients",
             ));
         }
         if !self.hsts.present {
@@ -314,7 +376,56 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         }
     }
 
+    // v0.5.46 — Cookie hygiene audit + Cache-Control capture.
+    // ureq's response.all() returns every Set-Cookie line separately
+    // (HTTP servers MAY fold or split — ureq surfaces both shapes).
+    for raw in response.all("set-cookie").into_iter().take(16) {
+        if let Some(audit) = parse_cookie_audit(raw) {
+            info.set_cookies.push(audit);
+        }
+    }
+    if let Some(v) = response.header("cache-control") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.cache_control = Some(trimmed.to_string());
+        }
+    }
+
     Ok(info)
+}
+
+/// v0.5.46 — parse a single Set-Cookie header line into a CookieAudit.
+/// Returns None when the line has no name=value pair (malformed).
+pub(crate) fn parse_cookie_audit(raw: &str) -> Option<CookieAudit> {
+    let mut parts = raw.split(';').map(str::trim);
+    let first = parts.next()?;
+    let (name_raw, _) = first.split_once('=')?;
+    let name = name_raw.trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+    let mut secure = false;
+    let mut http_only = false;
+    let mut same_site = None;
+    for attr in parts {
+        let lower = attr.to_ascii_lowercase();
+        if lower == "secure" {
+            secure = true;
+        } else if lower == "httponly" {
+            http_only = true;
+        } else if let Some(rest) = lower.strip_prefix("samesite=") {
+            let v = rest.trim().to_string();
+            if !v.is_empty() {
+                same_site = Some(v);
+            }
+        }
+    }
+    Some(CookieAudit {
+        name,
+        secure,
+        http_only,
+        same_site,
+    })
 }
 
 /// v0.5.45 — does the Server header value contain a version number?
@@ -341,7 +452,30 @@ pub(crate) fn server_header_leaks_version(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::server_header_leaks_version;
+    use super::{parse_cookie_audit, server_header_leaks_version};
+
+    #[test]
+    fn cookie_parses_full_attribute_set() {
+        let c = parse_cookie_audit("sid=abc123; Path=/; Secure; HttpOnly; SameSite=Lax").unwrap();
+        assert_eq!(c.name, "sid");
+        assert!(c.secure);
+        assert!(c.http_only);
+        assert_eq!(c.same_site.as_deref(), Some("lax"));
+    }
+
+    #[test]
+    fn cookie_misses_attributes() {
+        let c = parse_cookie_audit("session=xyz; Path=/").unwrap();
+        assert!(!c.secure);
+        assert!(!c.http_only);
+        assert!(c.same_site.is_none());
+    }
+
+    #[test]
+    fn cookie_malformed() {
+        assert!(parse_cookie_audit("; Secure").is_none());
+        assert!(parse_cookie_audit("=value").is_none());
+    }
 
     #[test]
     fn version_leak_detection() {

@@ -191,6 +191,12 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     // ── HTTP product disclosure (v0.5.45) ───────────────────────────
     ("HTTP-SERVER-VERSION-LEAK",   Severity::Low, "Server response header discloses product + version (e.g. nginx/1.18.0, Apache/2.4.7). Feeds vulnerability inventories without effort — production deployments should strip the version (server_tokens off / ServerTokens Prod / equivalent)"),
     ("HTTP-X-POWERED-BY-PRESENT",  Severity::Low, "X-Powered-By response header present. Modern frameworks default to disabling it; presence is a posture signal regardless of value (the header serves no operational purpose and leaks the framework + sometimes version)"),
+
+    // ── Cookie + cache hygiene (v0.5.46) ────────────────────────────
+    ("HTTP-COOKIE-NO-SECURE",       Severity::Medium, "Set-Cookie line lacks the Secure attribute — cookie will be transmitted in cleartext if the user is downgraded to HTTP (e.g. via SSL-stripping at a coffee-shop AP)"),
+    ("HTTP-COOKIE-NO-HTTPONLY",     Severity::Medium, "Set-Cookie line lacks the HttpOnly attribute — cookie is readable from JavaScript via document.cookie, expanding the impact of any XSS to full session-token theft"),
+    ("HTTP-COOKIE-NO-SAMESITE",     Severity::Low,    "Set-Cookie line has no SameSite attribute — cross-site CSRF protection depends on the browser's default (Chrome=Lax since 80, Safari historically=None)"),
+    ("HTTP-CACHE-CONTROL-MISSING",  Severity::Low,    "Response sets cookies but has no Cache-Control header — middlebox / reverse-proxy caches may store the response (including the Set-Cookie line) and serve it to other clients"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -259,9 +265,11 @@ mod tests {
         // TLS-OCSP-URL-HTTPS-SCHEME.
         // v0.5.44 added DNS-SOA-STALE. v0.5.45 added
         // HTTP-SERVER-VERSION-LEAK + HTTP-X-POWERED-BY-PRESENT.
+        // v0.5.46 added HTTP-COOKIE-NO-SECURE + HTTP-COOKIE-NO-HTTPONLY
+        // + HTTP-COOKIE-NO-SAMESITE + HTTP-CACHE-CONTROL-MISSING.
         assert_eq!(
             FINDING_CATALOG.len(),
-            73,
+            77,
             "FINDING_CATALOG size drifted from spec"
         );
     }
