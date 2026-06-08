@@ -264,6 +264,14 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "CVE-2003-0825",
         ],
 
+        // ── Intermediate cert expiry (v0.5.51) ──────────────────────
+        "TLS-CERT-INTERMEDIATE-NEAR-EXPIRY" | "TLS-CERT-INTERMEDIATE-EXPIRED" => vec![
+            "NIST 800-53 SC-17",
+            "PCI DSS 4.0 §4.2.1.1",
+            "ISO 27001 A.10.1.2",
+            "CA/B Forum BR §6.3.2",
+        ],
+
         _ => vec![],
     }
 }

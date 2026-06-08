@@ -206,6 +206,10 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── HTTP TRACE / XST (v0.5.49) ──────────────────────────────────
     ("HTTP-TRACE-ENABLED", Severity::Medium, "Server's Allow response header (OPTIONS /) lists TRACE — Cross-Site Tracing prerequisite. TRACE echoes the request including any client-sent headers, which combined with an XSS or browser bug becomes a credential-exfil channel"),
+
+    // ── Intermediate cert expiry (v0.5.51) ──────────────────────────
+    ("TLS-CERT-INTERMEDIATE-NEAR-EXPIRY", Severity::Medium,   "An intermediate cert in the presented chain expires within 90 days. Browser chain validation breaks once the intermediate goes regardless of leaf freshness — coordinate rotation with the CA before the leaf"),
+    ("TLS-CERT-INTERMEDIATE-EXPIRED",     Severity::Critical, "An intermediate cert in the presented chain has already expired — strict-mode clients reject the chain, the leaf's own validity is irrelevant"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -279,9 +283,11 @@ mod tests {
         // v0.5.47 added HTTP-NO-REDIRECT-TO-HTTPS.
         // v0.5.48 added TLS-CERT-SHARED-INFRA-CERT.
         // v0.5.49 added HTTP-TRACE-ENABLED.
+        // v0.5.51 added TLS-CERT-INTERMEDIATE-NEAR-EXPIRY +
+        // TLS-CERT-INTERMEDIATE-EXPIRED.
         assert_eq!(
             FINDING_CATALOG.len(),
-            80,
+            82,
             "FINDING_CATALOG size drifted from spec"
         );
     }

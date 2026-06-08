@@ -39,6 +39,14 @@ pub struct CertificateInfo {
     /// typical; >5 → deep chain (cross-signed sprawl, redundant
     /// intermediates, or misconfig).
     pub chain_length: u32,
+    /// v0.5.51 — days_remaining for each non-leaf cert in the
+    /// presented chain (intermediates, possibly the root if the server
+    /// included it). Same sign convention as `days_remaining`:
+    /// negative means already expired. Empty when the server sent only
+    /// a bare leaf. Used to emit TLS-CERT-INTERMEDIATE-NEAR-EXPIRY +
+    /// TLS-CERT-INTERMEDIATE-EXPIRED.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub chain_intermediates_days_remaining: Vec<i64>,
     pub self_signed: bool,
     pub ev: bool,
     pub must_staple: bool,
@@ -363,6 +371,38 @@ impl CertificateInfo {
                 ));
             }
         }
+        // v0.5.51 — intermediate cert expiry. A leaf with a long
+        // not_after but an intermediate expiring tomorrow still breaks
+        // browser chain validation tomorrow. Most CAs rotate
+        // intermediates years in advance, but staged rollovers
+        // (Let's Encrypt R3→R10) have caught operators by surprise.
+        let mut earliest_expired: Option<i64> = None;
+        let mut earliest_near: Option<i64> = None;
+        for &days in &self.chain_intermediates_days_remaining {
+            if days < 0 {
+                earliest_expired = Some(earliest_expired.map_or(days, |e| e.min(days)));
+            } else if days < 90 {
+                earliest_near = Some(earliest_near.map_or(days, |e| e.min(days)));
+            }
+        }
+        if let Some(days) = earliest_expired {
+            findings.push(make(
+                "TLS-CERT-INTERMEDIATE-EXPIRED",
+                host,
+                format!(
+                    "An intermediate cert in the chain expired {} days ago — strict-mode clients reject the chain regardless of leaf freshness",
+                    -days
+                ),
+            ));
+        } else if let Some(days) = earliest_near {
+            findings.push(make(
+                "TLS-CERT-INTERMEDIATE-NEAR-EXPIRY",
+                host,
+                format!(
+                    "An intermediate cert in the chain expires in {days} days — coordinate rotation with the CA before the leaf",
+                ),
+            ));
+        }
         // v0.5.48 — shared-infra cert: >100 SANs is the Cloudflare /
         // Fastly multi-tenant cert signature. Not a vulnerability, but
         // operators often want to know they're on shared infra
@@ -411,6 +451,20 @@ pub async fn inspect(
     // to intercept; deferred to v0.2.1 ("OCSP via rasn-ocsp" item in TODO).
     let mut info = parse_leaf(leaf_der.as_ref(), chain.len() as u32, None)?;
     info.chain_order_correct = chain_order_is_correct(chain);
+
+    // v0.5.51 — walk the non-leaf chain entries and capture each
+    // cert's days-to-expiry. Lets contribute_findings() emit
+    // TLS-CERT-INTERMEDIATE-NEAR-EXPIRY / -EXPIRED without re-parsing.
+    let now = Utc::now();
+    for inter_der in chain.iter().skip(1) {
+        if let Ok((_, cert)) = X509Certificate::from_der(inter_der.as_ref()) {
+            let not_after_secs = cert.validity().not_after.timestamp();
+            if let Some(not_after) = DateTime::<Utc>::from_timestamp(not_after_secs, 0) {
+                let days = (not_after - now).num_days();
+                info.chain_intermediates_days_remaining.push(days);
+            }
+        }
+    }
 
     // v0.5.31 — AIA caIssuers reachability. Run a quick HTTP HEAD
     // against the URL; populates Some(true/false) when a URL was
@@ -524,6 +578,9 @@ fn parse_leaf(
         ec_curve,
         chain_complete: chain_has_intermediates || self_signed,
         chain_length,
+        // Default empty; cert::inspect() walks the chain and pushes
+        // one entry per intermediate.
+        chain_intermediates_days_remaining: Vec::new(),
         self_signed,
         ev: has_ev_policy_oid(&cert),
         must_staple,
