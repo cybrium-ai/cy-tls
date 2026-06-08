@@ -102,6 +102,14 @@ pub struct BulkArgs {
     /// Run the full scan probe set (slow). Default is the fast bulk subset.
     #[arg(long)]
     pub full: bool,
+
+    /// v0.5.69 — emit per-target summary lines instead of the full
+    /// ScanReport. Each line is {target, ip, grade, score, passed,
+    /// verdict, severity_counts, breach_indicators}. Designed for
+    /// SIEM ingest + fleet dashboards at thousand-target scale where
+    /// the full report payload is overkill.
+    #[arg(long)]
+    pub summary: bool,
 }
 
 #[derive(Debug, Args)]

@@ -34,7 +34,11 @@ pub async fn run(args: BulkArgs) -> Result<()> {
     }
 
     while let Some(report) = in_flight.next().await {
-        emit_jsonl(&stdout, &report).await?;
+        if args.summary {
+            emit_summary_jsonl(&stdout, &report).await?;
+        } else {
+            emit_jsonl(&stdout, &report).await?;
+        }
         if let Some(t) = queue.next() {
             in_flight.push(scan_one(t, timeout, !args.full));
         }
@@ -95,6 +99,29 @@ fn failed_report(target: String) -> ScanReport {
         grade: Default::default(),
         summary: Default::default(),
     }
+}
+
+async fn emit_summary_jsonl(
+    out: &Arc<Mutex<tokio::io::Stdout>>,
+    report: &ScanReport,
+) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let line = serde_json::to_string(&serde_json::json!({
+        "target": report.target,
+        "ip": report.ip,
+        "grade": report.grade.grade,
+        "score": report.grade.score,
+        "passed": report.summary.passed,
+        "verdict": report.summary.verdict_line,
+        "severity_counts": report.summary.severity_counts,
+        "breach_indicators": report.summary.breach_indicators,
+        "elapsed_ms": report.elapsed_ms,
+    }))?;
+    let mut handle = out.lock().await;
+    handle.write_all(line.as_bytes()).await?;
+    handle.write_all(b"\n").await?;
+    handle.flush().await?;
+    Ok(())
 }
 
 async fn emit_jsonl(out: &Arc<Mutex<tokio::io::Stdout>>, report: &ScanReport) -> Result<()> {
