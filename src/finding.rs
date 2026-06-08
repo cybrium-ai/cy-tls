@@ -214,6 +214,10 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     // ── HTTP disclosure (v0.5.52) ───────────────────────────────────
     ("HTTP-SERVER-TIMING-PRESENT", Severity::Info, "Server-Timing response header present. Spec'd for legitimate front-end debugging but in production it leaks backend timings and cache-status descriptors (e.g. `cdn-cache;desc=HIT, origin;dur=42.3`)"),
     ("HTTP-VIA-PRESENT",           Severity::Info, "Via response header present. RFC 7230 §5.7.1 discloses the proxy chain. Rarely useful externally and leaks intermediate infrastructure to attackers"),
+
+    // ── CAA hygiene (v0.5.53) ───────────────────────────────────────
+    ("DNS-CAA-NO-IODEF",     Severity::Info, "CAA records are published but none has an `iodef` property tag (RFC 8657). Without iodef, a CA noticing a disallowed-issuance attempt has no operator endpoint to send a notification to"),
+    ("DNS-CAA-NO-ISSUEWILD", Severity::Low,  "CAA records published with `issue` policy but no `issuewild`. Wildcards inherit the issue policy by default, so CAs in the issue list may also issue wildcards. Add an explicit `issuewild` line (or `0 issuewild \";\"` to deny wildcards entirely)"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -290,9 +294,10 @@ mod tests {
         // v0.5.51 added TLS-CERT-INTERMEDIATE-NEAR-EXPIRY +
         // TLS-CERT-INTERMEDIATE-EXPIRED. v0.5.52 added
         // HTTP-SERVER-TIMING-PRESENT + HTTP-VIA-PRESENT.
+        // v0.5.53 added DNS-CAA-NO-IODEF + DNS-CAA-NO-ISSUEWILD.
         assert_eq!(
             FINDING_CATALOG.len(),
-            84,
+            86,
             "FINDING_CATALOG size drifted from spec"
         );
     }

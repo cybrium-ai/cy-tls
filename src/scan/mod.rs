@@ -843,6 +843,46 @@ async fn scan_one(
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
         caa::lookup(host_str, timeout).await
     };
+    // v0.5.53 — CAA hygiene findings. When CAA records exist but lack
+    // `iodef` (incident-reporting URL per RFC 8657) or `issuewild`
+    // (explicit wildcard policy), surface as informational findings.
+    // We only flag when AT LEAST ONE CAA record is published — silent
+    // when the zone has no CAA at all (the absence-of-CAA signal is
+    // already captured by the records vec being empty).
+    if !caa_records.is_empty() {
+        let has_iodef = caa_records.iter().any(|r| {
+            r.split_whitespace()
+                .nth(1)
+                .map(|t| t.eq_ignore_ascii_case("iodef"))
+                .unwrap_or(false)
+        });
+        let has_issuewild = caa_records.iter().any(|r| {
+            r.split_whitespace()
+                .nth(1)
+                .map(|t| t.eq_ignore_ascii_case("issuewild"))
+                .unwrap_or(false)
+        });
+        let has_issue = caa_records.iter().any(|r| {
+            r.split_whitespace()
+                .nth(1)
+                .map(|t| t.eq_ignore_ascii_case("issue"))
+                .unwrap_or(false)
+        });
+        if !has_iodef {
+            findings.push(crate::finding::make(
+                "DNS-CAA-NO-IODEF",
+                target,
+                "CAA records published but no `iodef` property tag (RFC 8657) — no operator endpoint to receive notifications about disallowed-issuance attempts",
+            ));
+        }
+        if has_issue && !has_issuewild {
+            findings.push(crate::finding::make(
+                "DNS-CAA-NO-ISSUEWILD",
+                target,
+                "CAA records published with `issue` but no `issuewild` policy — wildcards inherit the issue policy (CAs may issue wildcard certs from any authorized issuer). Add an explicit issuewild line (or `0 issuewild \";\"` to deny wildcards entirely)",
+            ));
+        }
+    }
     // v0.5.39 — DNS SOA lookup. Single DNS query, operational metadata.
     let dns_soa = {
         let host_str = target.rsplit_once(':').map(|(h, _)| h).unwrap_or(target);
