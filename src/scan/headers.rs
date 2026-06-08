@@ -98,6 +98,14 @@ pub struct HeaderInfo {
     /// (Cross-Site Tracing / XST prerequisite).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allow_methods: Option<String>,
+    /// v0.5.50 — normalized product family extracted from the Server
+    /// header (or None when Server is missing / unrecognized). One of:
+    /// nginx / apache / cloudflare / envoy / caddy / iis / gunicorn /
+    /// litespeed / openresty / haproxy / traefik / akamai-ghost / akamai /
+    /// fastly. Lowercase, no version. Pure informational — feeds
+    /// inventory + fleet-wide product-version dashboards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_product: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -387,6 +395,8 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             info.server_header = Some(trimmed.to_string());
+            // v0.5.50 — normalize into a product family.
+            info.server_product = classify_server_product(trimmed);
         }
     }
     if let Some(v) = response.header("x-powered-by") {
@@ -490,9 +500,95 @@ pub(crate) fn server_header_leaks_version(value: &str) -> bool {
     false
 }
 
+/// v0.5.50 — match the Server header against a known-product table.
+/// Returns the lowercase product family name when matched; None
+/// otherwise. Matching is case-insensitive and substring-based — both
+/// "nginx" and "nginx/1.18.0" return "nginx". Order matters: more
+/// specific patterns (akamai-ghost) are checked before less-specific
+/// ones (akamai).
+pub(crate) fn classify_server_product(value: &str) -> Option<String> {
+    let lower = value.to_ascii_lowercase();
+    // Specific → general. AkamaiGHost / openresty / litespeed / cloudfront
+    // need to win over their parent matches.
+    const PATTERNS: &[(&str, &str)] = &[
+        ("akamaighost", "akamai-ghost"),
+        ("akamainetstorage", "akamai-netstorage"),
+        ("openresty", "openresty"),
+        ("litespeed", "litespeed"),
+        ("microsoft-iis", "iis"),
+        ("microsoft-httpapi", "httpapi"),
+        ("cloudflare", "cloudflare"),
+        ("cloudfront", "cloudfront"),
+        ("amazons3", "s3"),
+        ("amazon", "amazon"),
+        ("fastly", "fastly"),
+        ("varnish", "varnish"),
+        ("envoy", "envoy"),
+        ("traefik", "traefik"),
+        ("caddy", "caddy"),
+        ("haproxy", "haproxy"),
+        ("gunicorn", "gunicorn"),
+        ("uvicorn", "uvicorn"),
+        ("waitress", "waitress"),
+        ("puma", "puma"),
+        ("apache", "apache"),
+        ("nginx", "nginx"),
+        ("jetty", "jetty"),
+        ("tomcat", "tomcat"),
+        ("kestrel", "kestrel"),
+        ("werkzeug", "werkzeug"),
+        ("github.com", "github-pages"),
+    ];
+    for (needle, family) in PATTERNS {
+        if lower.contains(needle) {
+            return Some((*family).to_string());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_cookie_audit, server_header_leaks_version};
+    use super::{classify_server_product, parse_cookie_audit, server_header_leaks_version};
+
+    #[test]
+    fn server_product_classification() {
+        assert_eq!(
+            classify_server_product("nginx/1.18.0").as_deref(),
+            Some("nginx")
+        );
+        assert_eq!(
+            classify_server_product("Apache/2.4.7 (Ubuntu)").as_deref(),
+            Some("apache")
+        );
+        assert_eq!(
+            classify_server_product("cloudflare").as_deref(),
+            Some("cloudflare")
+        );
+        assert_eq!(
+            classify_server_product("AkamaiGHost").as_deref(),
+            Some("akamai-ghost")
+        );
+        assert_eq!(
+            classify_server_product("openresty/1.19.9.1").as_deref(),
+            Some("openresty")
+        );
+        assert_eq!(
+            classify_server_product("Microsoft-IIS/10.0").as_deref(),
+            Some("iis")
+        );
+        assert_eq!(
+            classify_server_product("gunicorn/19.9.0").as_deref(),
+            Some("gunicorn")
+        );
+        assert_eq!(
+            classify_server_product("github.com").as_deref(),
+            Some("github-pages")
+        );
+        // Unknown vendor — returns None instead of misclassifying.
+        assert_eq!(classify_server_product("some-bespoke-server/1.0"), None);
+        assert_eq!(classify_server_product("Z"), None);
+    }
 
     #[test]
     fn cookie_parses_full_attribute_set() {
