@@ -854,6 +854,26 @@ async fn scan_one(
         dns_soa::lookup_dnssec(host_str, timeout).await
     };
 
+    // v0.5.44 — DNS-SOA-STALE: when the SOA serial uses the RFC 1912
+    // YYYYMMDDNN convention AND the embedded date is > 365 days old,
+    // the zone has stagnated. Strong operational signal — forgotten
+    // zones, orphaned subsidiaries, dynamic-DNS that's no longer being
+    // updated. Skipped when the operator uses bare monotonic serials
+    // (large CDNs typically do — no date to compare against).
+    if let Some(soa) = dns_soa.as_ref() {
+        if let Some(age) = soa.serial_age_days {
+            if age > 365 {
+                let evidence = format!(
+                    "SOA serial {} encodes {} ({} days ago); zone hasn't been updated in over a year",
+                    soa.serial,
+                    soa.serial_yyyymmdd.as_deref().unwrap_or("?"),
+                    age
+                );
+                findings.push(crate::finding::make("DNS-SOA-STALE", target, evidence));
+            }
+        }
+    }
+
     let elapsed_ms = start.elapsed().as_millis() as u64;
     Ok(ScanReport {
         target: target.into(),

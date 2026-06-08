@@ -184,6 +184,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── OCSP URL scheme (v0.5.38) ───────────────────────────────────
     ("TLS-OCSP-URL-HTTPS-SCHEME", Severity::Low, "OCSP responder URL uses https:// — RFC 6960 §A.1 recommends http:// to avoid the OCSP-over-OCSP loop where the OCSP query itself would need an OCSP-validated cert for the responder"),
+
+    // ── DNS SOA serial freshness (v0.5.44) ──────────────────────────
+    ("DNS-SOA-STALE", Severity::Info, "SOA serial uses RFC 1912 YYYYMMDDNN convention and the embedded date is > 365 days old — zone hasn't been updated in over a year. Forgotten zones, orphaned subsidiaries, and abandoned dynamic-DNS targets show up here"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -250,9 +253,10 @@ mod tests {
         // TLS-CERT-CHAIN-MISORDERED. v0.5.31 added
         // TLS-CERT-AIA-CA-ISSUERS-UNREACHABLE. v0.5.38 added
         // TLS-OCSP-URL-HTTPS-SCHEME.
+        // v0.5.44 added DNS-SOA-STALE.
         assert_eq!(
             FINDING_CATALOG.len(),
-            70,
+            71,
             "FINDING_CATALOG size drifted from spec"
         );
     }

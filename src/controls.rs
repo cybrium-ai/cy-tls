@@ -208,6 +208,9 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── OCSP URL scheme (v0.5.38) ───────────────────────────────
         "TLS-OCSP-URL-HTTPS-SCHEME" => vec!["NIST 800-53 SC-17", "RFC 6960 §A.1"],
 
+        // ── DNS SOA serial freshness (v0.5.44) ──────────────────────
+        "DNS-SOA-STALE" => vec!["RFC 1912 §2.2", "NIST 800-53 CM-2"],
+
         _ => vec![],
     }
 }
