@@ -291,6 +291,13 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
         // ── Deprecated Report-To (v0.5.55) ──────────────────────────
         "HTTP-DEPRECATED-REPORT-TO" => vec!["W3C Reporting API spec", "Chrome shipping plan 2025"],
 
+        // ── SCT count policy (v0.5.56) ──────────────────────────────
+        "TLS-CERT-SCT-COUNT-INSUFFICIENT" => vec![
+            "RFC 6962",
+            "Chromium CT Policy 2022-09",
+            "CA/B Forum BR §7.1.2.2",
+        ],
+
         _ => vec![],
     }
 }

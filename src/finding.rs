@@ -224,6 +224,9 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
 
     // ── Deprecated Report-To (v0.5.55) ──────────────────────────────
     ("HTTP-DEPRECATED-REPORT-TO", Severity::Info, "Legacy `Report-To` response header observed. W3C deprecated it in favor of `Reporting-Endpoints`; Chrome's shipping plan removes support through 2025. Replace with `Reporting-Endpoints` group definitions"),
+
+    // ── SCT count policy (v0.5.56) ──────────────────────────────────
+    ("TLS-CERT-SCT-COUNT-INSUFFICIENT", Severity::Medium, "Cert has fewer SCTs than Chrome's 2022 CT policy requires — <180-day-lifetime certs need ≥2 SCTs, ≥180-day certs need ≥3. Browsers treat the cert as CT-non-compliant"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -302,10 +305,11 @@ mod tests {
         // HTTP-SERVER-TIMING-PRESENT + HTTP-VIA-PRESENT.
         // v0.5.53 added DNS-CAA-NO-IODEF + DNS-CAA-NO-ISSUEWILD.
         // v0.5.54 added HTTP-CONTENT-TYPE-NO-CHARSET. v0.5.55 added
-        // HTTP-DEPRECATED-REPORT-TO.
+        // HTTP-DEPRECATED-REPORT-TO. v0.5.56 added
+        // TLS-CERT-SCT-COUNT-INSUFFICIENT.
         assert_eq!(
             FINDING_CATALOG.len(),
-            88,
+            89,
             "FINDING_CATALOG size drifted from spec"
         );
     }

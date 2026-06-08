@@ -308,6 +308,25 @@ impl CertificateInfo {
                 ),
             ));
         }
+        // v0.5.56 — Chrome 2022 SCT-count policy. Cert lifetime
+        // <180 days needs ≥2 SCTs; ≥180 days needs ≥3. Computed from
+        // not_before / not_after, NOT from days_remaining (we care
+        // about issuance-time lifetime, not residual). Skipped when
+        // sct_count == 0 (already caught by TLS-SCT-MISSING).
+        if self.sct_count > 0 {
+            let lifetime_days = (self.not_after - self.not_before).num_days();
+            let required = if lifetime_days < 180 { 2 } else { 3 };
+            if (self.sct_count as i64) < required {
+                findings.push(make(
+                    "TLS-CERT-SCT-COUNT-INSUFFICIENT",
+                    host,
+                    format!(
+                        "Cert lifetime is {lifetime_days} days; Chrome's 2022 CT policy requires ≥{required} embedded SCTs but the cert has only {}. Browsers will not trust the cert as CT-compliant",
+                        self.sct_count
+                    ),
+                ));
+            }
+        }
 
         // v0.4.3 — Symantec-era distrusted CA heuristic. Chrome 70 +
         // Firefox 63 (Sep–Oct 2018) removed trust from all
