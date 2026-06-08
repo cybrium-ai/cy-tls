@@ -272,6 +272,11 @@ pub fn for_id(id: &str) -> Vec<&'static str> {
             "CA/B Forum BR §6.3.2",
         ],
 
+        // ── HTTP disclosure (v0.5.52) ───────────────────────────────
+        "HTTP-SERVER-TIMING-PRESENT" | "HTTP-VIA-PRESENT" => {
+            vec!["NIST 800-53 SI-11", "OWASP ASVS 14.3.2"]
+        }
+
         _ => vec![],
     }
 }

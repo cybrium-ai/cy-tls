@@ -210,6 +210,10 @@ pub const FINDING_CATALOG: &[(&str, Severity, &str)] = &[
     // ── Intermediate cert expiry (v0.5.51) ──────────────────────────
     ("TLS-CERT-INTERMEDIATE-NEAR-EXPIRY", Severity::Medium,   "An intermediate cert in the presented chain expires within 90 days. Browser chain validation breaks once the intermediate goes regardless of leaf freshness — coordinate rotation with the CA before the leaf"),
     ("TLS-CERT-INTERMEDIATE-EXPIRED",     Severity::Critical, "An intermediate cert in the presented chain has already expired — strict-mode clients reject the chain, the leaf's own validity is irrelevant"),
+
+    // ── HTTP disclosure (v0.5.52) ───────────────────────────────────
+    ("HTTP-SERVER-TIMING-PRESENT", Severity::Info, "Server-Timing response header present. Spec'd for legitimate front-end debugging but in production it leaks backend timings and cache-status descriptors (e.g. `cdn-cache;desc=HIT, origin;dur=42.3`)"),
+    ("HTTP-VIA-PRESENT",           Severity::Info, "Via response header present. RFC 7230 §5.7.1 discloses the proxy chain. Rarely useful externally and leaks intermediate infrastructure to attackers"),
 ];
 
 /// Look up the canonical title + default severity for a finding ID. Panics
@@ -284,10 +288,11 @@ mod tests {
         // v0.5.48 added TLS-CERT-SHARED-INFRA-CERT.
         // v0.5.49 added HTTP-TRACE-ENABLED.
         // v0.5.51 added TLS-CERT-INTERMEDIATE-NEAR-EXPIRY +
-        // TLS-CERT-INTERMEDIATE-EXPIRED.
+        // TLS-CERT-INTERMEDIATE-EXPIRED. v0.5.52 added
+        // HTTP-SERVER-TIMING-PRESENT + HTTP-VIA-PRESENT.
         assert_eq!(
             FINDING_CATALOG.len(),
-            82,
+            84,
             "FINDING_CATALOG size drifted from spec"
         );
     }

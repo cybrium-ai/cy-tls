@@ -106,6 +106,18 @@ pub struct HeaderInfo {
     /// inventory + fleet-wide product-version dashboards.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_product: Option<String>,
+    /// v0.5.52 — value of the Server-Timing response header. Spec'd
+    /// for legitimate front-end debugging but in production it leaks
+    /// backend timings + cache-status descriptors (e.g.
+    /// `cdn-cache;desc=HIT, origin;dur=42.3`). Surfaced raw so
+    /// operators can decide whether to strip.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_timing: Option<String>,
+    /// v0.5.52 — value of the Via response header. RFC 7230 §5.7.1.
+    /// Discloses the proxy chain ("1.1 vegur, 1.1 cloudfront"). Rarely
+    /// useful externally; leaks intermediate infra to attackers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -208,6 +220,23 @@ impl HeaderInfo {
                 "HTTP-CACHE-CONTROL-MISSING",
                 host,
                 "Response sets cookies but has no Cache-Control header — intermediate caches may store the response (including the Set-Cookie line) and serve it to other clients",
+            ));
+        }
+        // v0.5.52 — Server-Timing + Via disclosure. Both are info-level
+        // (the values may be benign, but they're rarely useful outside
+        // a development environment and they cost nothing to strip).
+        if let Some(v) = self.server_timing.as_deref() {
+            findings.push(make(
+                "HTTP-SERVER-TIMING-PRESENT",
+                host,
+                format!("Server-Timing header present: {v}"),
+            ));
+        }
+        if let Some(v) = self.via.as_deref() {
+            findings.push(make(
+                "HTTP-VIA-PRESENT",
+                host,
+                format!("Via header present: {v}"),
             ));
         }
         // v0.5.49 — TRACE method (XST surface). Parse comma-separated
@@ -418,6 +447,20 @@ pub fn fetch(target: &str, deadline: Duration) -> anyhow::Result<HeaderInfo> {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             info.cache_control = Some(trimmed.to_string());
+        }
+    }
+
+    // v0.5.52 — Server-Timing + Via disclosure.
+    if let Some(v) = response.header("server-timing") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.server_timing = Some(trimmed.to_string());
+        }
+    }
+    if let Some(v) = response.header("via") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            info.via = Some(trimmed.to_string());
         }
     }
 
