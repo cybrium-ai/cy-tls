@@ -56,6 +56,7 @@ pub struct RootOfTrust {
 }
 
 impl RootOfTrust {
+    #[allow(dead_code)] // unused on platforms whose detect() path doesn't return absent
     fn absent() -> Self {
         Self {
             kind: RootOfTrustKind::None,
@@ -63,6 +64,7 @@ impl RootOfTrust {
             present: false,
         }
     }
+    #[allow(dead_code)] // unused on Linux where detect() never returns unknown
     fn unknown() -> Self {
         Self {
             kind: RootOfTrustKind::Unknown,
