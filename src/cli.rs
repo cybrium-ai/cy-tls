@@ -39,68 +39,54 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Full posture probe against one or more targets.
+    /// Scan one or more targets for TLS posture.
     Scan(ScanArgs),
 
-    /// JSONL streaming for IP-prefix or large host lists.
+    /// Stream JSONL scans of a host list.
     Bulk(BulkArgs),
 
-    /// Chromium HSTS preload list lookup.
+    /// Look up a host in the Chromium HSTS preload list.
     VerifyPreload(VerifyPreloadArgs),
 
-    /// Local web UI for browsing + running scans. Browser-served, 127.0.0.1 only.
+    /// Open the local web UI on 127.0.0.1.
     Gui(GuiArgs),
 
-    /// Model Context Protocol server — JSON-RPC over stdio. Lets Claude or
-    /// other MCP-aware agents call cy-tls as a tool.
+    /// Serve as an MCP tool over stdio.
     Mcp,
 
-    /// Detect the host's hardware root-of-trust (TPM 2.0 / TPM 1.2 / Apple
-    /// Secure Enclave). Emits JSON. Detection-only — does not drive the
-    /// TPM, generate AIKs, or sign payloads.
+    /// Report the host's TPM / Secure Enclave (JSON).
     Rot,
 
-    /// Check GitHub releases for a newer cy-tls and self-replace this
-    /// binary with it. Idempotent: prints "Already up to date" + exits 0
-    /// when current.
+    /// Self-update to the latest release.
     Update,
 
-    /// Alias for `update` — matches the `brew upgrade` / `scoop update`
-    /// vocabulary users expect.
+    /// Alias for `update`.
     Upgrade,
 
-    /// Print the stable hardware fingerprint for this host. Sourced from
-    /// TPM EK / Apple Secure Enclave when available, falling back to
-    /// firmware UUID / machine-id. The `host_id_source` field discloses
-    /// which class of identifier was used.
+    /// Print the host's hardware fingerprint (JSON).
     Fingerprint,
 
-    /// Per-host license-state CRUD. v0.5.72 / Sprint 127 Phase 1: local
-    /// only, no enforcement, no network. Phase 3 wires refuse-to-run
-    /// once the backend licensing endpoint ships.
+    /// Manage this host's local license state.
     #[command(subcommand)]
     License(LicenseCommand),
 }
 
 #[derive(Debug, Subcommand)]
 pub enum LicenseCommand {
-    /// Show the current license-state file, or `{"bound": false}` when
-    /// none exists.
+    /// Show the current license state.
     Show,
 
-    /// Bind this host to the given license key. Phase 1: stores the
-    /// key + current fingerprint locally only.
+    /// Bind this host to a license key.
     Activate {
-        /// License key issued by Cybrium (e.g. `lic_…`).
+        /// License key issued by Cybrium.
         #[arg(required = true)]
         key: String,
     },
 
-    /// Remove the local license-state file.
+    /// Remove the local license file.
     Deactivate,
 
-    /// Re-read the current hardware fingerprint and compare it to the
-    /// fingerprint stored in the license file. Exits non-zero on mismatch.
+    /// Verify the stored license matches this host. Non-zero on mismatch.
     Verify,
 }
 
