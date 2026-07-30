@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Scan(args) => scan::run(args).await,
         Command::Bulk(args) => bulk::run(args).await,
+        Command::Ssh(args) => run_ssh_audit(args).await,
         Command::VerifyPreload(args) => preload::verify(args),
         Command::Gui(args) => gui::run(args).await,
         Command::Mcp => mcp::run().await,
@@ -104,4 +105,67 @@ async fn main() -> anyhow::Result<()> {
             }
         },
     }
+}
+
+/// `cy-tls ssh <host>` — read the server's advertised algorithms and audit them.
+async fn run_ssh_audit(args: cli::SshArgs) -> anyhow::Result<()> {
+    use std::time::Duration;
+    use scan::ssh_algos;
+
+    let target = if args.target.contains(':') {
+        args.target.clone()
+    } else {
+        format!("{}:22", args.target)
+    };
+
+    let kex = match ssh_algos::probe(&target, Duration::from_secs(args.timeout)).await {
+        Ok(k) => k,
+        Err(e) => {
+            if args.json {
+                println!("{}", serde_json::json!({
+                    "target": target, "error": e, "findings": []
+                }));
+            } else {
+                eprintln!("cy-tls: {target}: {e}");
+            }
+            std::process::exit(2);
+        }
+    };
+
+    let findings = ssh_algos::audit(&target, &kex);
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+            "target":       target,
+            "banner":       kex.banner,
+            "strict_kex":   kex.strict_kex(),
+            "algorithms": {
+                "kex":         kex.kex,
+                "host_keys":   kex.host_keys,
+                "ciphers":     kex.ciphers,
+                "macs":        kex.macs,
+                "compression": kex.compression,
+            },
+            "findings": findings,
+        }))?);
+        return Ok(());
+    }
+
+    println!("SSH crypto posture — {target}");
+    if !kex.banner.is_empty() {
+        println!("  {}", kex.banner);
+    }
+    println!("  {} kex · {} host key · {} cipher · {} MAC",
+             kex.kex.len(), kex.host_keys.len(), kex.ciphers.len(), kex.macs.len());
+    println!();
+    for f in &findings {
+        println!("  [{:>8}] {}", f.severity.as_str(), f.title);
+        if !f.evidence.is_empty() {
+            println!("             {}", f.evidence);
+        }
+        if !f.remediation.is_empty() {
+            println!("             → {}", f.remediation);
+        }
+    }
+    Ok(())
 }
