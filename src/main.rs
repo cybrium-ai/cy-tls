@@ -109,8 +109,8 @@ async fn main() -> anyhow::Result<()> {
 
 /// `cy-tls ssh <host>` — read the server's advertised algorithms and audit them.
 async fn run_ssh_audit(args: cli::SshArgs) -> anyhow::Result<()> {
-    use std::time::Duration;
     use scan::ssh_algos;
+    use std::time::Duration;
 
     let target = if args.target.contains(':') {
         args.target.clone()
@@ -122,9 +122,12 @@ async fn run_ssh_audit(args: cli::SshArgs) -> anyhow::Result<()> {
         Ok(k) => k,
         Err(e) => {
             if args.json {
-                println!("{}", serde_json::json!({
-                    "target": target, "error": e, "findings": []
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "target": target, "error": e, "findings": []
+                    })
+                );
             } else {
                 eprintln!("cy-tls: {target}: {e}");
             }
@@ -135,19 +138,22 @@ async fn run_ssh_audit(args: cli::SshArgs) -> anyhow::Result<()> {
     let findings = ssh_algos::audit(&target, &kex);
 
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "target":       target,
-            "banner":       kex.banner,
-            "strict_kex":   kex.strict_kex(),
-            "algorithms": {
-                "kex":         kex.kex,
-                "host_keys":   kex.host_keys,
-                "ciphers":     kex.ciphers,
-                "macs":        kex.macs,
-                "compression": kex.compression,
-            },
-            "findings": findings,
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "target":       target,
+                "banner":       kex.banner,
+                "strict_kex":   kex.strict_kex(),
+                "algorithms": {
+                    "kex":         kex.kex,
+                    "host_keys":   kex.host_keys,
+                    "ciphers":     kex.ciphers,
+                    "macs":        kex.macs,
+                    "compression": kex.compression,
+                },
+                "findings": findings,
+            }))?
+        );
         return Ok(());
     }
 
@@ -155,8 +161,13 @@ async fn run_ssh_audit(args: cli::SshArgs) -> anyhow::Result<()> {
     if !kex.banner.is_empty() {
         println!("  {}", kex.banner);
     }
-    println!("  {} kex · {} host key · {} cipher · {} MAC",
-             kex.kex.len(), kex.host_keys.len(), kex.ciphers.len(), kex.macs.len());
+    println!(
+        "  {} kex · {} host key · {} cipher · {} MAC",
+        kex.kex.len(),
+        kex.host_keys.len(),
+        kex.ciphers.len(),
+        kex.macs.len()
+    );
     println!();
     for f in &findings {
         println!("  [{:>8}] {}", f.severity.as_str(), f.title);

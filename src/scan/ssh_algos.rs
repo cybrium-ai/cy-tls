@@ -66,45 +66,134 @@ impl SshKexInit {
 type Rule = (&'static str, bool, Severity, &'static str);
 
 const WEAK_KEX: &[Rule] = &[
-    ("diffie-hellman-group1-sha1", false, Severity::High,
-     "1024-bit MODP group with SHA-1 — within reach of precomputation (Logjam)"),
-    ("diffie-hellman-group-exchange-sha1", false, Severity::Medium,
-     "SHA-1 group exchange"),
-    ("diffie-hellman-group14-sha1", false, Severity::Medium,
-     "SHA-1 key exchange hash"),
-    ("rsa1024-sha1", false, Severity::High, "1024-bit RSA key exchange with SHA-1"),
-    ("gss-group1-sha1-", true, Severity::High, "GSS key exchange over the 1024-bit group"),
+    (
+        "diffie-hellman-group1-sha1",
+        false,
+        Severity::High,
+        "1024-bit MODP group with SHA-1 — within reach of precomputation (Logjam)",
+    ),
+    (
+        "diffie-hellman-group-exchange-sha1",
+        false,
+        Severity::Medium,
+        "SHA-1 group exchange",
+    ),
+    (
+        "diffie-hellman-group14-sha1",
+        false,
+        Severity::Medium,
+        "SHA-1 key exchange hash",
+    ),
+    (
+        "rsa1024-sha1",
+        false,
+        Severity::High,
+        "1024-bit RSA key exchange with SHA-1",
+    ),
+    (
+        "gss-group1-sha1-",
+        true,
+        Severity::High,
+        "GSS key exchange over the 1024-bit group",
+    ),
 ];
 
 const WEAK_HOSTKEY: &[Rule] = &[
-    ("ssh-dss", false, Severity::High,
-     "DSA host key — 1024-bit and SHA-1 signed; disabled by default since OpenSSH 7.0"),
-    ("ssh-rsa", false, Severity::Medium,
-     "RSA host key with a SHA-1 signature (RFC 4253 ssh-rsa); prefer rsa-sha2-256/512"),
+    (
+        "ssh-dss",
+        false,
+        Severity::High,
+        "DSA host key — 1024-bit and SHA-1 signed; disabled by default since OpenSSH 7.0",
+    ),
+    (
+        "ssh-rsa",
+        false,
+        Severity::Medium,
+        "RSA host key with a SHA-1 signature (RFC 4253 ssh-rsa); prefer rsa-sha2-256/512",
+    ),
 ];
 
 const WEAK_CIPHER: &[Rule] = &[
     ("none", false, Severity::Critical, "no encryption"),
-    ("arcfour", true, Severity::High, "RC4 — biased keystream, prohibited by RFC 7465"),
-    ("3des-cbc", false, Severity::Medium, "3DES — 64-bit block, Sweet32"),
-    ("blowfish-cbc", false, Severity::Medium, "64-bit block cipher, Sweet32"),
-    ("cast128-cbc", false, Severity::Medium, "64-bit block cipher, Sweet32"),
-    ("des-cbc", false, Severity::Critical, "single DES — 56-bit key"),
-    ("rijndael-cbc@lysator.liu.se", false, Severity::Medium, "legacy CBC alias"),
+    (
+        "arcfour",
+        true,
+        Severity::High,
+        "RC4 — biased keystream, prohibited by RFC 7465",
+    ),
+    (
+        "3des-cbc",
+        false,
+        Severity::Medium,
+        "3DES — 64-bit block, Sweet32",
+    ),
+    (
+        "blowfish-cbc",
+        false,
+        Severity::Medium,
+        "64-bit block cipher, Sweet32",
+    ),
+    (
+        "cast128-cbc",
+        false,
+        Severity::Medium,
+        "64-bit block cipher, Sweet32",
+    ),
+    (
+        "des-cbc",
+        false,
+        Severity::Critical,
+        "single DES — 56-bit key",
+    ),
+    (
+        "rijndael-cbc@lysator.liu.se",
+        false,
+        Severity::Medium,
+        "legacy CBC alias",
+    ),
 ];
 
 const WEAK_MAC: &[Rule] = &[
     ("none", false, Severity::Critical, "no integrity protection"),
     ("hmac-md5", true, Severity::High, "MD5 — collision-broken"),
-    ("hmac-sha1-96", false, Severity::Medium, "truncated 96-bit SHA-1 tag"),
-    ("hmac-sha2-256-96", false, Severity::Medium, "truncated 96-bit tag"),
-    ("hmac-sha2-512-96", false, Severity::Medium, "truncated 96-bit tag"),
-    ("umac-64", true, Severity::Medium, "64-bit authentication tag"),
-    ("hmac-ripemd160", true, Severity::Medium, "RIPEMD-160 — not a current standard"),
+    (
+        "hmac-sha1-96",
+        false,
+        Severity::Medium,
+        "truncated 96-bit SHA-1 tag",
+    ),
+    (
+        "hmac-sha2-256-96",
+        false,
+        Severity::Medium,
+        "truncated 96-bit tag",
+    ),
+    (
+        "hmac-sha2-512-96",
+        false,
+        Severity::Medium,
+        "truncated 96-bit tag",
+    ),
+    (
+        "umac-64",
+        true,
+        Severity::Medium,
+        "64-bit authentication tag",
+    ),
+    (
+        "hmac-ripemd160",
+        true,
+        Severity::Medium,
+        "RIPEMD-160 — not a current standard",
+    ),
 ];
 
 fn matches(name: &str, rule: &Rule) -> bool {
-    if rule.1 { name.starts_with(rule.0) } else { name == rule.0 }
+    if rule.1 {
+        name.starts_with(rule.0)
+    } else {
+        name == rule.0
+    }
 }
 
 // ── Protocol ───────────────────────────────────────────────────────────────
@@ -171,7 +260,7 @@ async fn handshake(target: &str) -> std::io::Result<SshKexInit> {
     stream.read_exact(&mut hdr).await?;
     let pkt_len = u32::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]) as usize;
     let pad_len = hdr[4] as usize;
-    if pkt_len < 2 || pkt_len > MAX_PACKET || pad_len + 1 > pkt_len {
+    if !(2..=MAX_PACKET).contains(&pkt_len) || pad_len + 1 > pkt_len {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "implausible SSH packet length — not an SSH-2 server",
@@ -181,7 +270,10 @@ async fn handshake(target: &str) -> std::io::Result<SshKexInit> {
     let mut payload = vec![0u8; payload_len];
     stream.read_exact(&mut payload).await?;
 
-    let mut out = SshKexInit { banner, ..Default::default() };
+    let mut out = SshKexInit {
+        banner,
+        ..Default::default()
+    };
     if payload.is_empty() || payload[0] != SSH_MSG_KEXINIT {
         // Some servers greet with a debug/disconnect message instead; the
         // banner alone is still worth reporting.
@@ -201,13 +293,29 @@ async fn handshake(target: &str) -> std::io::Result<SshKexInit> {
 
 // ── Audit ──────────────────────────────────────────────────────────────────
 
-fn flag(
-    out: &mut Vec<Finding>, host: &str, id: &'static str, sev: Severity,
-    title: &'static str, evidence: String, remediation: &'static str,
-    reference_url: &'static str, controls: Vec<&'static str>,
-) {
-    out.push(Finding { id, host: host.to_string(), severity: sev, title, evidence,
-                       controls, remediation, reference_url });
+/// Static metadata for one check. Separating it from the dynamic evidence
+/// keeps the emit helper to four arguments and lets each check read as a
+/// declaration rather than a long positional call.
+struct Note {
+    id: &'static str,
+    sev: Severity,
+    title: &'static str,
+    remediation: &'static str,
+    reference_url: &'static str,
+    controls: &'static [&'static str],
+}
+
+fn flag(out: &mut Vec<Finding>, host: &str, note: &Note, evidence: String) {
+    out.push(Finding {
+        id: note.id,
+        host: host.to_string(),
+        severity: note.sev,
+        title: note.title,
+        evidence,
+        controls: note.controls.to_vec(),
+        remediation: note.remediation,
+        reference_url: note.reference_url,
+    });
 }
 
 fn scan_list(list: &[String], rules: &[Rule]) -> Vec<(String, Severity, &'static str)> {
@@ -236,9 +344,10 @@ fn rank(s: Severity) -> u8 {
 }
 
 fn worst(hits: &[(String, Severity, &'static str)]) -> Severity {
-    hits.iter()
-        .map(|h| h.1)
-        .fold(Severity::Info, |acc, s| if rank(s) > rank(acc) { s } else { acc })
+    hits.iter().map(|h| h.1).fold(
+        Severity::Info,
+        |acc, s| if rank(s) > rank(acc) { s } else { acc },
+    )
 }
 
 fn describe(hits: &[(String, Severity, &'static str)]) -> String {
@@ -254,41 +363,76 @@ pub fn audit(host: &str, k: &SshKexInit) -> Vec<Finding> {
 
     // SSH-1 is structurally broken (CRC-32 compensation attack).
     if k.banner.starts_with("SSH-1.") {
-        flag(&mut out, host, "SSH-PROTO-V1", Severity::Critical,
-             "SSH protocol 1 supported",
-             format!("Server banner: {}", k.banner),
-             "Disable protocol 1 entirely — set `Protocol 2` (or remove the directive on any modern OpenSSH).",
-             "https://www.openssh.com/legacy.html",
-             vec!["PCI DSS 4.0 §4.2.1", "NIST SP 800-52r2", "CIS Benchmark"]);
+        flag(&mut out, host, &Note {
+            id: "SSH-PROTO-V1",
+            sev: Severity::Critical,
+            title: "SSH protocol 1 supported",
+            remediation: "Disable protocol 1 entirely — set `Protocol 2` (or remove the directive on any modern OpenSSH).",
+            reference_url: "https://www.openssh.com/legacy.html",
+            controls: &["PCI DSS 4.0 §4.2.1", "NIST SP 800-52r2", "CIS Benchmark"],
+        }, format!("Server banner: {}", k.banner));
     }
 
     if !k.banner.is_empty() {
-        flag(&mut out, host, "SSH-BANNER", Severity::Info,
-             "SSH service banner",
-             k.banner.clone(),
-             "Version disclosure is low risk on its own, but it lets an attacker match known vulnerabilities without probing.",
-             "https://datatracker.ietf.org/doc/html/rfc4253#section-4.2",
-             vec![]);
+        flag(&mut out, host, &Note {
+            id: "SSH-BANNER",
+            sev: Severity::Info,
+            title: "SSH service banner",
+            remediation: "Version disclosure is low risk on its own, but it lets an attacker match known vulnerabilities without probing.",
+            reference_url: "https://datatracker.ietf.org/doc/html/rfc4253#section-4.2",
+            controls: &[],
+        }, k.banner.clone());
     }
 
-    for (list, rules, id, title, remediation, controls) in [
-        (&k.kex, WEAK_KEX, "SSH-KEX-WEAK", "Weak key exchange offered",
-         "Restrict `KexAlgorithms` to curve25519-sha256 and diffie-hellman-group-exchange-sha256 or stronger.",
-         vec!["PCI DSS 4.0 §4.2.1", "NIST SP 800-131A"]),
-        (&k.host_keys, WEAK_HOSTKEY, "SSH-HOSTKEY-WEAK", "Weak host key algorithm offered",
-         "Restrict `HostKeyAlgorithms` to ssh-ed25519 and rsa-sha2-512/256; remove ssh-dss and bare ssh-rsa.",
-         vec!["NIST SP 800-131A"]),
-        (&k.ciphers, WEAK_CIPHER, "SSH-CIPHER-WEAK", "Weak cipher offered",
-         "Restrict `Ciphers` to chacha20-poly1305@openssh.com and aes*-gcm/aes*-ctr; remove every CBC and arcfour entry.",
-         vec!["PCI DSS 4.0 §4.2.1", "NIST SP 800-52r2"]),
-        (&k.macs, WEAK_MAC, "SSH-MAC-WEAK", "Weak MAC offered",
-         "Restrict `MACs` to encrypt-then-MAC SHA-2 variants (hmac-sha2-256-etm@openssh.com and stronger).",
-         vec!["NIST SP 800-131A"]),
-    ] {
+    // Each list is audited against its own policy table; severity comes from
+    // the worst algorithm actually advertised.
+    let checks: [(&Vec<String>, &[Rule], Note); 4] = [
+        (&k.kex, WEAK_KEX, Note {
+            id: "SSH-KEX-WEAK",
+            sev: Severity::Info,
+            title: "Weak key exchange offered",
+            remediation: "Restrict `KexAlgorithms` to curve25519-sha256 and diffie-hellman-group-exchange-sha256 or stronger.",
+            reference_url: "https://www.openssh.com/specs.html",
+            controls: &["PCI DSS 4.0 §4.2.1", "NIST SP 800-131A"],
+        }),
+        (&k.host_keys, WEAK_HOSTKEY, Note {
+            id: "SSH-HOSTKEY-WEAK",
+            sev: Severity::Info,
+            title: "Weak host key algorithm offered",
+            remediation: "Restrict `HostKeyAlgorithms` to ssh-ed25519 and rsa-sha2-512/256; remove ssh-dss and bare ssh-rsa.",
+            reference_url: "https://www.openssh.com/specs.html",
+            controls: &["NIST SP 800-131A"],
+        }),
+        (&k.ciphers, WEAK_CIPHER, Note {
+            id: "SSH-CIPHER-WEAK",
+            sev: Severity::Info,
+            title: "Weak cipher offered",
+            remediation: "Restrict `Ciphers` to chacha20-poly1305@openssh.com and aes*-gcm/aes*-ctr; remove every CBC and arcfour entry.",
+            reference_url: "https://www.openssh.com/specs.html",
+            controls: &["PCI DSS 4.0 §4.2.1", "NIST SP 800-52r2"],
+        }),
+        (&k.macs, WEAK_MAC, Note {
+            id: "SSH-MAC-WEAK",
+            sev: Severity::Info,
+            title: "Weak MAC offered",
+            remediation: "Restrict `MACs` to encrypt-then-MAC SHA-2 variants (hmac-sha2-256-etm@openssh.com and stronger).",
+            reference_url: "https://www.openssh.com/specs.html",
+            controls: &["NIST SP 800-131A"],
+        }),
+    ];
+
+    for (list, rules, note) in checks {
         let hits = scan_list(list, rules);
         if !hits.is_empty() {
-            flag(&mut out, host, id, worst(&hits), title, describe(&hits),
-                 remediation, "https://www.openssh.com/specs.html", controls);
+            flag(
+                &mut out,
+                host,
+                &Note {
+                    sev: worst(&hits),
+                    ..note
+                },
+                describe(&hits),
+            );
         }
     }
 
@@ -296,13 +440,15 @@ pub fn audit(host: &str, k: &SshKexInit) -> Vec<Finding> {
     // plaintext-recovery attack, independent of which cipher wraps it.
     let cbc: Vec<&String> = k.ciphers.iter().filter(|c| c.ends_with("-cbc")).collect();
     if !cbc.is_empty() {
-        flag(&mut out, host, "SSH-CIPHER-CBC", Severity::Medium,
-             "CBC-mode ciphers offered",
-             format!("{} CBC cipher(s): {}", cbc.len(),
-                     cbc.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")),
-             "Prefer AEAD (aes*-gcm, chacha20-poly1305) or CTR modes; CBC in SSH enables plaintext recovery against the packet-length field.",
-             "https://www.kb.cert.org/vuls/id/958563",
-             vec!["PCI DSS 4.0 §4.2.1"]);
+        flag(&mut out, host, &Note {
+            id: "SSH-CIPHER-CBC",
+            sev: Severity::Medium,
+            title: "CBC-mode ciphers offered",
+            remediation: "Prefer AEAD (aes*-gcm, chacha20-poly1305) or CTR modes; CBC in SSH enables plaintext recovery against the packet-length field.",
+            reference_url: "https://www.kb.cert.org/vuls/id/958563",
+            controls: &["PCI DSS 4.0 §4.2.1"],
+        }, format!("{} CBC cipher(s): {}", cbc.len(),
+                   cbc.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
     }
 
     // Terrapin (CVE-2023-48795): a prefix-truncation attack against
@@ -312,25 +458,45 @@ pub fn audit(host: &str, k: &SshKexInit) -> Vec<Finding> {
     let chacha = k.ciphers.iter().any(|c| c.starts_with("chacha20-poly1305"));
     let etm = k.macs.iter().any(|m| m.ends_with("-etm@openssh.com"));
     if (chacha || etm) && !k.strict_kex() {
-        flag(&mut out, host, "SSH-TERRAPIN", Severity::Medium,
-             "Vulnerable to Terrapin prefix truncation (CVE-2023-48795)",
-             format!(
-                 "Offers {} but does not advertise kex-strict-s-v00@openssh.com, so strict key exchange is unavailable.",
-                 if chacha && etm { "chacha20-poly1305 and encrypt-then-MAC" }
-                 else if chacha { "chacha20-poly1305" } else { "encrypt-then-MAC MACs" }),
-             "Upgrade to OpenSSH 9.6 or later (or a patched vendor build) so strict key exchange is negotiated.",
-             "https://terrapin-attack.com/",
-             vec!["CVE-2023-48795"]);
+        let modes = if chacha && etm {
+            "chacha20-poly1305 and encrypt-then-MAC"
+        } else if chacha {
+            "chacha20-poly1305"
+        } else {
+            "encrypt-then-MAC MACs"
+        };
+        flag(&mut out, host, &Note {
+            id: "SSH-TERRAPIN",
+            sev: Severity::Medium,
+            title: "Vulnerable to Terrapin prefix truncation (CVE-2023-48795)",
+            remediation: "Upgrade to OpenSSH 9.6 or later (or a patched vendor build) so strict key exchange is negotiated.",
+            reference_url: "https://terrapin-attack.com/",
+            controls: &["CVE-2023-48795"],
+        }, format!("Offers {modes} but does not advertise kex-strict-s-v00@openssh.com, so strict key exchange is unavailable."));
     }
 
     // Nothing weak found is itself worth stating — a clean result should be
     // visible rather than inferred from an empty list.
     if out.iter().all(|f| f.severity == Severity::Info) && !k.kex.is_empty() {
-        flag(&mut out, host, "SSH-ALGOS-OK", Severity::Info,
-             "No weak SSH algorithms advertised",
-             format!("{} kex, {} host key, {} cipher, {} MAC algorithm(s) reviewed",
-                     k.kex.len(), k.host_keys.len(), k.ciphers.len(), k.macs.len()),
-             "", "", vec![]);
+        flag(
+            &mut out,
+            host,
+            &Note {
+                id: "SSH-ALGOS-OK",
+                sev: Severity::Info,
+                title: "No weak SSH algorithms advertised",
+                remediation: "",
+                reference_url: "",
+                controls: &[],
+            },
+            format!(
+                "{} kex, {} host key, {} cipher, {} MAC algorithm(s) reviewed",
+                k.kex.len(),
+                k.host_keys.len(),
+                k.ciphers.len(),
+                k.macs.len()
+            ),
+        );
     }
 
     out
@@ -351,12 +517,18 @@ mod tests {
         }
     }
 
-    fn ids(f: &[Finding]) -> Vec<&str> { f.iter().map(|x| x.id).collect() }
+    fn ids(f: &[Finding]) -> Vec<&str> {
+        f.iter().map(|x| x.id).collect()
+    }
 
     #[test]
     fn flags_cbc_and_weak_cipher() {
-        let k = kex(&["aes128-cbc", "3des-cbc"], &["hmac-sha2-256"],
-                    &["curve25519-sha256"], &["ssh-ed25519"]);
+        let k = kex(
+            &["aes128-cbc", "3des-cbc"],
+            &["hmac-sha2-256"],
+            &["curve25519-sha256"],
+            &["ssh-ed25519"],
+        );
         let f = audit("h:22", &k);
         assert!(ids(&f).contains(&"SSH-CIPHER-CBC"));
         assert!(ids(&f).contains(&"SSH-CIPHER-WEAK"));
@@ -364,8 +536,12 @@ mod tests {
 
     #[test]
     fn flags_weak_kex_and_hostkey() {
-        let k = kex(&["aes256-gcm@openssh.com"], &["hmac-sha2-256"],
-                    &["diffie-hellman-group1-sha1"], &["ssh-dss"]);
+        let k = kex(
+            &["aes256-gcm@openssh.com"],
+            &["hmac-sha2-256"],
+            &["diffie-hellman-group1-sha1"],
+            &["ssh-dss"],
+        );
         let f = audit("h:22", &k);
         assert!(ids(&f).contains(&"SSH-KEX-WEAK"));
         assert!(ids(&f).contains(&"SSH-HOSTKEY-WEAK"));
@@ -373,24 +549,37 @@ mod tests {
 
     #[test]
     fn terrapin_only_without_strict_kex() {
-        let vulnerable = kex(&["chacha20-poly1305@openssh.com"], &["hmac-sha2-256"],
-                             &["curve25519-sha256"], &["ssh-ed25519"]);
+        let vulnerable = kex(
+            &["chacha20-poly1305@openssh.com"],
+            &["hmac-sha2-256"],
+            &["curve25519-sha256"],
+            &["ssh-ed25519"],
+        );
         assert!(ids(&audit("h:22", &vulnerable)).contains(&"SSH-TERRAPIN"));
 
-        let patched = kex(&["chacha20-poly1305@openssh.com"], &["hmac-sha2-256"],
-                          &["curve25519-sha256", "kex-strict-s-v00@openssh.com"],
-                          &["ssh-ed25519"]);
+        let patched = kex(
+            &["chacha20-poly1305@openssh.com"],
+            &["hmac-sha2-256"],
+            &["curve25519-sha256", "kex-strict-s-v00@openssh.com"],
+            &["ssh-ed25519"],
+        );
         assert!(!ids(&audit("h:22", &patched)).contains(&"SSH-TERRAPIN"));
     }
 
     #[test]
     fn modern_config_is_clean() {
-        let k = kex(&["chacha20-poly1305@openssh.com", "aes256-gcm@openssh.com"],
-                    &["hmac-sha2-512-etm@openssh.com"],
-                    &["curve25519-sha256", "kex-strict-s-v00@openssh.com"],
-                    &["ssh-ed25519", "rsa-sha2-512"]);
+        let k = kex(
+            &["chacha20-poly1305@openssh.com", "aes256-gcm@openssh.com"],
+            &["hmac-sha2-512-etm@openssh.com"],
+            &["curve25519-sha256", "kex-strict-s-v00@openssh.com"],
+            &["ssh-ed25519", "rsa-sha2-512"],
+        );
         let f = audit("h:22", &k);
-        assert!(f.iter().all(|x| x.severity == Severity::Info), "{:?}", ids(&f));
+        assert!(
+            f.iter().all(|x| x.severity == Severity::Info),
+            "{:?}",
+            ids(&f)
+        );
         assert!(ids(&f).contains(&"SSH-ALGOS-OK"));
     }
 
