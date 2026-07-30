@@ -45,6 +45,10 @@ pub enum Command {
     /// Stream JSONL scans of a host list.
     Bulk(BulkArgs),
 
+    /// Audit an SSH server's advertised crypto (algorithms, Terrapin).
+    #[command(version)]
+    Ssh(SshArgs),
+
     /// Look up a host in the Chromium HSTS preload list.
     VerifyPreload(VerifyPreloadArgs),
 
@@ -212,4 +216,18 @@ pub fn init_tracing(verbose: u8) {
         .with_target(false)
         .with_writer(std::io::stderr)
         .init();
+}
+
+#[derive(Debug, Args)]
+pub struct SshArgs {
+    /// host or host:port (defaults to port 22)
+    pub target: String,
+
+    /// Emit JSON instead of the readable report.
+    #[arg(long)]
+    pub json: bool,
+
+    /// Per-connection timeout in seconds.
+    #[arg(long, default_value_t = 10)]
+    pub timeout: u64,
 }

@@ -1087,3 +1087,5 @@ fn failed_report(target: String, error: String) -> ScanReport {
     let findings = vec![crate::finding::make("TLS-UNREACHABLE", &target, error)];
     stub_report(target, None, 0, findings)
 }
+
+pub mod ssh_algos;
