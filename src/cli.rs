@@ -13,7 +13,15 @@ use clap::{Args, Parser, Subcommand};
     name = "cy-tls",
     version,
     about = "Cybrium SSL/TLS posture scanner",
-    disable_version_flag = true
+    disable_version_flag = true,
+    // The -v/-V version args below are `global = true`, so clap attaches them
+    // to every subcommand. A subcommand carrying an ArgAction::Version arg must
+    // also carry a version string, and without this clap's debug assertions
+    // abort on startup: "Command scan: ArgAction::Version used without
+    // providing Command::version". Release builds skip debug assertions, so
+    // shipped binaries worked while every debug build panicked on every
+    // subcommand — local development of this tool was broken end to end.
+    propagate_version = true
 )]
 pub struct Cli {
     /// Bump tracing log level. Repeat for more (`--verbose --verbose`).
@@ -46,7 +54,6 @@ pub enum Command {
     Bulk(BulkArgs),
 
     /// Audit an SSH server's advertised crypto (algorithms, Terrapin).
-    #[command(version)]
     Ssh(SshArgs),
 
     /// Look up a host in the Chromium HSTS preload list.
