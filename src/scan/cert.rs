@@ -212,6 +212,13 @@ pub struct CertificateInfo {
     /// "thumbprint" / "fingerprint" in the cert-details UI; CT
     /// logs reference certs by this value.
     pub sha256_fingerprint: String,
+    /// v0.6.4 — the leaf cert's serial number as uppercase hex,
+    /// colon-separated (the canonical display format used by OpenSSL
+    /// `-serial`, browser cert viewers, and `sha256_fingerprint`
+    /// above). Distinct from `serial_entropy_bits`, which is a derived
+    /// posture metric, not the value itself. Surfaced in cert-detail
+    /// UIs as "Serial Number".
+    pub serial_number: String,
 }
 
 impl CertificateInfo {
@@ -773,6 +780,7 @@ fn parse_leaf(
     let has_server_auth_eku = has_extended_key_usage_server_auth(&cert);
     let crl_distribution_points = extract_crl_distribution_points(&cert);
     let serial_entropy_bits = serial_entropy_bits(tbs.raw_serial());
+    let serial_number = hex_colon_upper(tbs.raw_serial());
     let basic_constraints_ca = basic_constraints_ca_bit(&cert);
     let spki_sha256 = spki_sha256_hex(&cert);
     let sha256_fingerprint = sha256_hex_of(der);
@@ -826,6 +834,7 @@ fn parse_leaf(
         aia_ca_issuers_reachable: None,
         spki_sha256,
         sha256_fingerprint,
+        serial_number,
         ocsp_stapled,
         ocsp_status,
     })
@@ -1096,6 +1105,16 @@ fn basic_constraints_ca_bit(cert: &X509Certificate) -> bool {
     // certificate ... then the certified public key MUST NOT be used
     // to verify certificate signatures").
     false
+}
+
+/// Format raw serial bytes as uppercase hex, colon-separated — the
+/// canonical cert-viewer / OpenSSL `-serial` display format (e.g.
+/// `0A:1B:2C`). A zero-length serial (malformed cert) yields "".
+fn hex_colon_upper(raw: &[u8]) -> String {
+    raw.iter()
+        .map(|b| format!("{b:02X}"))
+        .collect::<Vec<_>>()
+        .join(":")
 }
 
 /// Calculate the entropy bits in a cert serial number. The raw_serial
