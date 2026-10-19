@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::finding::{make, Finding};
+use crate::finding::{make, Finding, Severity};
 
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct HeaderInfo {
@@ -279,12 +279,23 @@ impl HeaderInfo {
         }
         if let Some(csp) = self.content_security_policy.as_deref() {
             let lower = csp.to_ascii_lowercase();
-            if lower.contains("'unsafe-inline'") || lower.contains("unsafe-inline") {
-                findings.push(make(
-                    "HTTP-CSP-UNSAFE-INLINE",
-                    host,
-                    format!("CSP policy contains 'unsafe-inline' — defeats most of the XSS-mitigation value of CSP. Use nonces or hashes instead: {csp}"),
-                ));
+            // v0.6.5 — unsafe-inline precision. CSP's XSS-mitigation value
+            // lives in the *script* execution context: 'unsafe-inline' in
+            // script-src (or the default-src fallback when script-src is
+            // absent) genuinely defeats CSP and stays Medium. But
+            // 'unsafe-inline' confined to a style-src* directive — a common,
+            // low-risk necessity for inline SVG <style> blocks and
+            // framework-injected style attributes — does NOT re-open inline
+            // script execution, so it is downgraded to Low instead of
+            // masquerading as a script-level XSS gap.
+            if let Some(severity) = classify_csp_unsafe_inline(&lower) {
+                let evidence = match severity {
+                    Severity::Low => format!("CSP 'unsafe-inline' is confined to a style-src* directive; the script execution context is strict. This permits inline styles (e.g. inline SVG <style>, framework style attributes) but does NOT re-open inline script execution — low residual risk (CSS-injection only): {csp}"),
+                    _ => format!("CSP allows 'unsafe-inline' in the script execution context (script-src, or the default-src fallback) — defeats most of the XSS-mitigation value of CSP. Use per-element nonces or hashes instead: {csp}"),
+                };
+                let mut f = make("HTTP-CSP-UNSAFE-INLINE", host, evidence);
+                f.severity = severity;
+                findings.push(f);
             }
             // v0.5.66 — extended CSP danger patterns. Each is a real
             // CSP-bypass primitive Mozilla Observatory + Google CSP
@@ -435,9 +446,12 @@ impl HeaderInfo {
                 "Host meets the hstspreload.org submission requirements (max-age ≥ 1yr, includeSubDomains, preload directive present) but is NOT yet on the Chromium preload list. Submit at hstspreload.org to lock in HSTS protection from the very first browser visit.",
             ));
         }
-        if !self.expect_ct.present {
-            findings.push(make("EXPECT-CT-MISSING", host, "Expect-CT absent"));
-        }
+        // v0.6.5 — Expect-CT is fully deprecated: Chrome stopped enforcing it
+        // in M107 (Nov 2022) and browsers enforce Certificate Transparency by
+        // default. A *missing* Expect-CT header is therefore a non-finding and
+        // only generated audit noise, so we no longer emit it. (The ID stays
+        // registered in the catalog for backward compatibility with any
+        // consumer that still maps it.)
         if self.hpkp.present {
             findings.push(make(
                 "TLS-HPKP-PRESENT",
@@ -677,6 +691,35 @@ pub(crate) fn csp_directive_value<'a>(lower_csp: &'a str, directive: &str) -> Op
     None
 }
 
+/// v0.6.5 — classify the severity of an `'unsafe-inline'` occurrence in a CSP
+/// policy. Returns None when there is no unsafe-inline at all; Medium when it
+/// reaches the script execution context (script-src, or the default-src
+/// fallback when script-src is absent); Low when it is confined to a style-src*
+/// directive (inline-style necessity, not a script-XSS gap); Medium otherwise
+/// (unattributable placement — stay conservative). Input is expected to be
+/// already lowercased.
+pub(crate) fn classify_csp_unsafe_inline(lower_csp: &str) -> Option<Severity> {
+    if !lower_csp.contains("unsafe-inline") {
+        return None;
+    }
+    let script_dir = csp_directive_value(lower_csp, "script-src")
+        .or_else(|| csp_directive_value(lower_csp, "default-src"));
+    let script_has_inline = script_dir
+        .map(|v| v.split_ascii_whitespace().any(|t| t == "'unsafe-inline'"))
+        .unwrap_or(false);
+    if script_has_inline {
+        return Some(Severity::Medium);
+    }
+    let style_has_inline = ["style-src", "style-src-elem", "style-src-attr"]
+        .iter()
+        .filter_map(|d| csp_directive_value(lower_csp, d))
+        .any(|v| v.split_ascii_whitespace().any(|t| t == "'unsafe-inline'"));
+    if style_has_inline {
+        return Some(Severity::Low);
+    }
+    Some(Severity::Medium)
+}
+
 /// v0.5.46 — parse a single Set-Cookie header line into a CookieAudit.
 /// Returns None when the line has no name=value pair (malformed).
 pub(crate) fn parse_cookie_audit(raw: &str) -> Option<CookieAudit> {
@@ -783,9 +826,52 @@ pub(crate) fn classify_server_product(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_server_product, csp_directive_value, parse_cookie_audit,
-        server_header_leaks_version,
+        classify_csp_unsafe_inline, classify_server_product, csp_directive_value,
+        parse_cookie_audit, server_header_leaks_version,
     };
+    use crate::finding::Severity;
+
+    #[test]
+    fn csp_unsafe_inline_severity_is_directive_aware() {
+        // No unsafe-inline at all → no finding.
+        assert_eq!(
+            classify_csp_unsafe_inline("default-src 'self'; script-src 'self'"),
+            None
+        );
+        // unsafe-inline in script-src → Medium (defeats XSS mitigation).
+        assert_eq!(
+            classify_csp_unsafe_inline("script-src 'self' 'unsafe-inline'"),
+            Some(Severity::Medium)
+        );
+        // unsafe-inline via default-src fallback (no script-src) → Medium.
+        assert_eq!(
+            classify_csp_unsafe_inline("default-src 'self' 'unsafe-inline'"),
+            Some(Severity::Medium)
+        );
+        // unsafe-inline confined to style-src, script-src strict → Low.
+        // (This is the app.cybrium.ai inline-SVG-<style> case.)
+        assert_eq!(
+            classify_csp_unsafe_inline("script-src 'self'; style-src 'self' 'unsafe-inline'"),
+            Some(Severity::Low)
+        );
+        // style-src-attr variant also downgrades.
+        assert_eq!(
+            classify_csp_unsafe_inline("script-src 'self'; style-src-attr 'unsafe-inline'"),
+            Some(Severity::Low)
+        );
+        // style-src unsafe-inline but script-src ALSO unsafe-inline → Medium wins.
+        assert_eq!(
+            classify_csp_unsafe_inline(
+                "script-src 'unsafe-inline'; style-src 'unsafe-inline'"
+            ),
+            Some(Severity::Medium)
+        );
+        // default-src strict, style-src inline → Low (script side is safe).
+        assert_eq!(
+            classify_csp_unsafe_inline("default-src 'self'; style-src 'unsafe-inline'"),
+            Some(Severity::Low)
+        );
+    }
 
     #[test]
     fn csp_directive_value_extracts() {
