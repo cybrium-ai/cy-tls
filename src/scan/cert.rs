@@ -90,6 +90,22 @@ impl ServerCertVerifier for NoVerify {
     }
 }
 
+/// v0.6.6 — one entry per certificate the server presented in its chain
+/// (leaf first, then intermediates and possibly the root). Serialized under
+/// `certificate.chain`; the platform's Cert Chain tab renders these directly.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChainEntry {
+    pub position: u32,
+    pub subject: String,
+    pub issuer: String,
+    pub not_before: DateTime<Utc>,
+    pub not_after: DateTime<Utc>,
+    pub signature_algorithm: String,
+    pub key_algorithm: String,
+    pub key_bits: u32,
+    pub sha256_fingerprint: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CertificateInfo {
     pub subject: String,
@@ -110,6 +126,11 @@ pub struct CertificateInfo {
     /// typical; >5 → deep chain (cross-signed sprawl, redundant
     /// intermediates, or misconfig).
     pub chain_length: u32,
+    /// v0.6.6 — the full presented chain, one ChainEntry per certificate
+    /// (leaf + intermediates/root). Empty only if DER parsing fails for every
+    /// presented cert. Powers the platform's Cert Chain tab.
+    #[serde(default)]
+    pub chain: Vec<ChainEntry>,
     /// v0.5.51 — days_remaining for each non-leaf cert in the
     /// presented chain (intermediates, possibly the root if the server
     /// included it). Same sign convention as `days_remaining`:
@@ -692,6 +713,15 @@ pub async fn inspect(
         }
     }
 
+    // v0.6.6 — serialize every presented certificate (leaf + intermediates/
+    // root) so the platform Cert Chain tab shows the real chain instead of
+    // only a chain-complete boolean.
+    for (i, cert_der) in chain.iter().enumerate() {
+        if let Ok(entry) = parse_chain_entry(cert_der.as_ref(), (i + 1) as u32) {
+            info.chain.push(entry);
+        }
+    }
+
     // v0.5.31 — AIA caIssuers reachability. Run a quick HTTP HEAD
     // against the URL; populates Some(true/false) when a URL was
     // published, None otherwise. Bounded by `deadline`.
@@ -747,6 +777,27 @@ async fn active_ocsp_query(
     );
     let response = super::ocsp_query::query_responder(responder_url, request_der, deadline).await?;
     parse_ocsp_status(&response)
+}
+
+fn parse_chain_entry(der: &[u8], position: u32) -> anyhow::Result<ChainEntry> {
+    let (_, cert) =
+        X509Certificate::from_der(der).map_err(|e| anyhow::anyhow!("DER parse failed: {e}"))?;
+    let tbs = &cert.tbs_certificate;
+    let (key_algorithm, key_bits, _ec) = key_strength(&tbs.subject_pki);
+    Ok(ChainEntry {
+        position,
+        subject: tbs.subject.to_string(),
+        issuer: tbs.issuer.to_string(),
+        not_before: chrono_from_asn1(tbs.validity.not_before),
+        not_after: chrono_from_asn1(tbs.validity.not_after),
+        signature_algorithm: oid_names::signature_algorithm(
+            &tbs.signature.algorithm.to_id_string(),
+        )
+        .to_string(),
+        key_algorithm,
+        key_bits,
+        sha256_fingerprint: sha256_hex_of(der),
+    })
 }
 
 fn parse_leaf(
@@ -805,6 +856,8 @@ fn parse_leaf(
         ec_curve,
         chain_complete: chain_has_intermediates || self_signed,
         chain_length,
+        // Default empty; cert::inspect() walks the presented chain and fills this.
+        chain: Vec::new(),
         // Default empty; cert::inspect() walks the chain and pushes
         // one entry per intermediate.
         chain_intermediates_days_remaining: Vec::new(),
