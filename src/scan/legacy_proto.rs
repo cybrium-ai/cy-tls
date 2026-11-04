@@ -227,17 +227,38 @@ fn build_client_hello(sni: &str, major: u8, minor: u8) -> Vec<u8> {
     hello_body.push(minor); // client_version
     hello_body.extend_from_slice(&[0u8; 32]); // random (zeros — fine for probe)
     hello_body.push(0); // session_id length
-                        // Cipher suites — a small but representative set:
-    let suites: [u16; 9] = [
-        0xC02F, // ECDHE-RSA-AES128-GCM-SHA256
-        0xC030, // ECDHE-RSA-AES256-GCM-SHA384
-        0xC02B, // ECDHE-ECDSA-AES128-GCM-SHA256
-        0xC02C, // ECDHE-ECDSA-AES256-GCM-SHA384
-        0x009C, // RSA-AES128-GCM-SHA256
-        0x009D, // RSA-AES256-GCM-SHA384
-        0x002F, // RSA-AES128-SHA
-        0x0035, // RSA-AES256-SHA
-        0x000A, // RSA-3DES-EDE-SHA
+    // Cipher suites for the VERSION-SUPPORT probe. To decide whether a
+    // protocol version is supported we must offer the ciphers that
+    // version might actually negotiate — INCLUDING legacy/weak ones
+    // (RC4, 3DES, DES, export, CBC) — not just modern AEAD. A host that
+    // only enables RC4 on TLS 1.0/1.1 (a legacy appliance, or
+    // rc4.badssl.com) rejects a modern-only ClientHello with
+    // handshake_failure and would otherwise look like it doesn't support
+    // the version at all — a false negative. Cipher *strength* is judged
+    // separately (scan::cipher_enum / the weak-cipher findings); this
+    // list exists purely so version detection is independent of cipher
+    // strength, exactly as sslyze and testssl probe. Spans RSA/DHE/ECDHE
+    // key exchange across RC4 / 3DES / DES / AES-CBC / CAMELLIA / SEED
+    // bulk ciphers, plus modern AES-GCM + CHACHA20 so a modern TLS 1.2
+    // host still matches on the correct version. The probe only confirms
+    // the server returned a ServerHello at the *requested* record version
+    // (see `attempt`), so a broader offer cannot cause a false positive
+    // on a host that doesn't support the version.
+    let suites: &[u16] = &[
+        // RC4
+        0x0005, 0x0004, 0xC011, 0xC007, 0xC00C, 0xC002, 0xC016,
+        // 3DES-EDE-CBC
+        0x000A, 0x0016, 0x0013, 0xC012, 0xC008, 0xC017, 0xC003,
+        // DES-CBC + export (DES40 / RC4-40 / RC2-40)
+        0x0009, 0x0015, 0x0012, 0x0008, 0x0014, 0x0011, 0x0006, 0x0003,
+        // AES-128-CBC (RSA / DHE / ECDHE)
+        0x002F, 0x0033, 0x0032, 0xC013, 0xC009, 0xC004, 0xC00E,
+        // AES-256-CBC (RSA / DHE / ECDHE)
+        0x0035, 0x0039, 0x0038, 0xC014, 0xC00A, 0xC005, 0xC00F,
+        // CAMELLIA-CBC + SEED-CBC
+        0x0041, 0x0045, 0x0084, 0x0088, 0x0096,
+        // Modern AEAD (TLS 1.2) so a modern host still matches its version
+        0xC02F, 0xC030, 0xC02B, 0xC02C, 0x009C, 0x009D, 0xCCA8, 0xCCA9,
     ];
     let cipher_bytes: Vec<u8> = suites.iter().flat_map(|s| s.to_be_bytes()).collect();
     hello_body.extend_from_slice(&(cipher_bytes.len() as u16).to_be_bytes());
@@ -264,4 +285,28 @@ fn build_client_hello(sni: &str, major: u8, minor: u8) -> Vec<u8> {
     record.extend_from_slice(&(handshake.len() as u16).to_be_bytes());
     record.extend_from_slice(&handshake);
     record
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A TLS 1.0 ClientHello built for a VERSION-support probe must offer
+    // legacy weak ciphers (RC4 0x0005, 3DES 0x000A) so a host that only
+    // enables those on 1.0/1.1 is still detected as supporting the
+    // version. Regression guard for the rc4-only false-negative bug.
+    #[test]
+    fn client_hello_offers_legacy_ciphers_for_version_probe() {
+        let hello = build_client_hello("example.com", 0x03, 0x01);
+
+        // Record header: Handshake (0x16) at the requested version (TLS 1.0).
+        assert_eq!(hello[0], 0x16, "record content type must be Handshake");
+        assert_eq!((hello[1], hello[2]), (0x03, 0x01), "record version TLS 1.0");
+
+        // The offered cipher list must contain RC4 and 3DES, byte-encoded.
+        let has = |a: u8, b: u8| hello.windows(2).any(|w| w == [a, b]);
+        assert!(has(0x00, 0x05), "must offer TLS_RSA_WITH_RC4_128_SHA (0x0005)");
+        assert!(has(0xC0, 0x11), "must offer TLS_ECDHE_RSA_WITH_RC4_128_SHA (0xC011)");
+        assert!(has(0x00, 0x0A), "must offer TLS_RSA_WITH_3DES_EDE_CBC_SHA (0x000A)");
+    }
 }
